@@ -33,6 +33,17 @@ glimpse(static_microglia)
 # using the summary function to examine characteristics of each variable more closely 
 summary(static_microglia)
 
+# removing the 'cluster' column because this was created by a previous student in my lab after conducting K-means clustering 
+## the 'cluster' column was column #35 so I used the indexing brackets to remove it and replaced the old dataset with a new one that doesn't contain #35
+### I also removed any row from the BrainRegion column that were not HYPO (hypothalamus)
+#### this is because the student who generated these data also looked at specific hypothalamic nuclei, which I don't want to examine
+static_microglia <- static_microglia[,-35]%>%filter(BrainRegion == 'HYPO')
+
+#static_microglia_edited <- static_microglia%>%filter(BrainRegion == 'HYPO')
+# checking dataframe and it looks good!
+View(static_microglia) # now my dataframe only contains 
+glimpse(static_microglia) # now my dataframe only has 34 columns 
+
 
 # i am going to use PCA for the first part of my analysis for this dataset, and before i do that, i need to standardize my data
 ## this will prevent any variables with large values from skewing the PCA results
@@ -49,7 +60,7 @@ static_microglia[static_microglia_num_cols] <- lapply(static_microglia[static_mi
 
 # checking to make sure my standardized dataset looks correct
 View(static_microglia)
-# loogks good! all numeric variables have been z-scored
+# looks good! all numeric variables have been z-scored
 
 # now I will run a PCA using the function prcomp()
 ## here, I excluded columns 1-7 from analysis because they are categorical variables and I don't want them in my analysis
