@@ -114,7 +114,6 @@ fviz_eig(static_microglia_pca,
          ggtheme = theme_classic())
 # from this plot, it seems as though PCs 1-3 explain most of the variance (~82%)
 ## PC1 and PC2 alone explain 75.3% 
-# add new column for cumulative explained vairance -- sum
 
 # i am also going to make an elbow plot with the Kaiser criterion cutoff (red line)
 ## this cutoff states that you should only retain PCs with a variance percentage (Eigenvalue) > 1
@@ -224,76 +223,184 @@ fig
 # ------------------------------------------------------------------------------
 # PROCESSING MY DATA MORE TO REMOVE REDUNDANT VARIABLES 
 
-# now I am going to remove any redundant variables from my analysis (ie. variables that are summary statistics of one another)
-## in addition to examining the names of the variables, I am going to check empirically using cor() to see which variables correlate with each other 
-library(corrplot)
+# after completing PCA on my data, it is clear that there are several redundant/correlating variables within my dataset
+# now I am going to remove any redundant variables and examine the resulting PCA to see if this can help clarify the analysis
 
+## first, I am going to check variable correlation empirically using cor(), which uses Pearson correlation
+library(corrplot)
 # isolating numbered columns from my data
-static_microglia_num_cols <- sapply(static_microglia, is.numeric)
+static_microglia_num_cols <- sapply(static_microglia_filtered, is.numeric)
 
 # using the cor() function to see which variables correlate with each other 
-cor_mat <- cor(static_microglia[static_microglia_num_cols], use = "pairwise.complete.obs")
-corrplot(cor_mat, method = "color", type = "upper", tl.cex = 0.6) # plotting this 
+static_microglia_cor <- cor(static_microglia_filtered[static_microglia_num_cols], use = "pairwise.complete.obs")
+# plotting this as a correlation matrix
+## a Pearson correlation coefficient of |r| = 1 means exact correlation 
+### r = +1 means a positive correlation, but r = -1 means a negative correlation
+corrplot(static_microglia_cor, method = "color", type = "upper", tl.cex = 0.6) 
 
-# listing variable pairs with |r| > 0.9
-high <- which(abs(cor_mat) > 0.95 & upper.tri(cor_mat), arr.ind = TRUE)
-data.frame(var1 = rownames(cor_mat)[high[, 1]],
-           var2 = colnames(cor_mat)[high[, 2]],
-           r = cor_mat[high])
+# to make this simpler, I am going to list variable pairs with |r| > 0.9, which I am defining as very high correlation
+high <- which(abs(static_microglia_cor) > 0.90 & upper.tri(static_microglia_cor), arr.ind = TRUE)
+data.frame(var1 = rownames(static_microglia_cor)[high[, 1]],
+           var2 = colnames(static_microglia_cor)[high[, 2]],
+           r = static_microglia_cor[high])
+# from this list and the above plot, I can see that many variables correlate empirically
+## but it is still hard to determine what variables need to be removed from this list 
 
-print(colnames(static_microglia))
-
-# using a cluster dendrogram to visualize the different blocks of variables that are redundant 
-## blocks of variables below the red line (0.1) 
-dist_mat <- as.dist(1 - abs(cor_mat))
+# for a better visual, I am going to use a cluster dendrogram to visualize the different blocks of variables that are redundant 
+## this method converts the Pearson correlation coefficients from above into a distance clustering format (by calculating cluster score = 1-|r|), and then creates a dendrogram 
+### again, I want to look at variables with high correlation (|r| > 0.9), which in this format translates to cluster score > 0.1 
+dist_mat <- as.dist(1 - abs(static_microglia_cor))
 hc <- hclust(dist_mat, method = "complete")
 plot(hc, cex = 0.7)
-abline(h = 0.05, col = "red", lty = 2)   # cut at |r| = 0.9
+abline(h = 0.1, col = "red", lty = 2)   # this red line marks |r| = 0.9
 
-groups <- cutree(hc, h = 0.05)
-split(names(groups), groups) # this prints my variable names listed by block 
+# I am also going to print out the names of the variables in each of these clusters below |r| = 0.9
+groups <- cutree(hc, h = 0.1)
+split(names(groups), groups) 
 
-keep <- c("Foreground.pixels", "Density.of.foreground.pixels.in.hull.area", "Span.ratio.of.hull..major.minor.axis.", 
-          "Perimeter", "Area", "Circularity", "Width.of.bounding.rectangle", "Height.of.bounding.rectangle", 
-          "Max.min.radii.from.hull.s.center.of.mass", "Relative.variation..CV..in.radii.from.hull.s.center.of.mass", 
-          "Max.min.radii.from.circle.s.center.of.mass", "Relative.variation..CV..in.radii.from.circle.s.center.of.mass", 
-          "X..of.branches", "X..of.end.point.voxels", "X..of.slab.voxels", "Average.branch.length", "X..of.quadruple.points", 
-          "Maximum.branch.length")         
-cor_new <- cor(static_microglia[keep], use = "pairwise.complete.obs")
-max(abs(cor_new[upper.tri(cor_new)]))     # should now be < 0.9
+# now I can make decisions about what variables to cut based on empirical evidence 
+## from group '4', I am going to keep "Perimeter" and remove the other 6 highly-correlated variables 
+### from group '13', I am going to keep "Number.of.branches" and remove the other 3 highly-correlated variables 
+#### this brings my total number of (numeric) variables from 27 to 18
+keep <- c("Foreground.pixels", "Foreground.hull.pixel.density", "Ratio.of.hull.axes", "Perimeter",
+          "Area", "Circularity", "Width.of.bounding.rectangle", "Height.of.bounding.rectangle", 
+          "Max.min.radius.from.hull.center", "CV.in.radii.from.hull.center", "Max.min.radius.from.circle.center",
+          "CV.in.radii.from.circle.center", "Number.of.branches", "Number.of.end.point.voxels", "Number.of.slab.voxels",
+          "Average.branch.length", "Number.of.quadruple.points", "Maximum.branch.length") 
+# creating a new dataframe that only keeps the above 18 numeric variables 
+static_microglia_non_red  <- static_microglia_filtered[keep]
 
-
-static_microglia_redundancy <- static_microglia[keep]
-static_microglia_pca_red <- prcomp(static_microglia_redundancy[,-c(1:7)], 
+# now that I have removed these highly correlated variables from my dataset, I am going to perform PCA again using the steps from above 
+static_microglia_non_red_pca <- prcomp(static_microglia_non_red[,-c(1:7)], 
                                    scale = TRUE)
-fviz_eig(static_microglia_pca_red, 
+
+# generating a scree plot to help me decide how many components to retain in my analysis 
+fviz_eig(static_microglia_non_red_pca, 
          addlabels = TRUE, 
          ylim = c(0, 60),
          barfill = 'skyblue',
          barcolor = 'black',
          main = "Microglia Morphology PCA Scree Plot", 
          ggtheme = theme_classic())
-fviz_pca_biplot(static_microglia_pca_red, 
-                label = 'var', 
-                habillage = static_microglia$Sex,
-                col.var = "black", 
-                repel = TRUE,
-                title = "Microglia Morphology PCA Biplot", 
-                xlab = "PC1 (55.3%)", 
-                ylab = "PC2 (20.0%)", 
-                ggtheme = theme_minimal())
+# from this plot, it seems as though PCs 1-4 explain most of the variance
 
 
-#static_microglia_edited <- static_microglia%>%filter(BrainRegion == 'HYPO')
-# checking dataframe and it looks good!
-View(static_microglia) # now my dataframe only contains 
-glimpse(static_microglia) # now my dataframe only has 34 columns 
+# i am also going to make an elbow plot with the Kaiser criterion cutoff (red line)
+pca_scree <- data.frame(
+  PC = 1:length(static_microglia_non_red_pca$sdev),
+  Eigenvalue = static_microglia_non_red_pca$sdev^2)
+ggplot(pca_scree, aes(x = PC, y = Eigenvalue)) +
+  geom_line(color = "blue", linewidth = 1) +
+  geom_point(color = "blue", size = 3) +
+  # Add Kaiser Criterion line at y = 1
+  geom_hline(yintercept = 1, linterp = "dashed", color = "red", linewidth = 1) +
+  labs(title = "Scree Plot", x = "Principal Component", y = "Eigenvalue") +
+  theme_minimal()
+# based on the Kaiser criterion, I need to retain PCs 1-3
+
+# now I am going to make biplots to visualize the spread of my data with PCA
+# biplot that overlays PC1 and PC2 and shows the top 8 contributing variables for simplicity
+pca_non_red_12 <- fviz_pca_biplot(static_microglia_non_red_pca,
+                          geom = c("point"),
+                          label = "var",
+                          habillage = static_microglia_filtered$Treatment,
+                          col.var = "black",
+                          labelsize = 4,
+                          repel = TRUE,
+                          ggrepel.max.overlaps = Inf,
+                          alpha.var = "contrib", 
+                          alpha.legend = "none",
+                          select.var = list(contrib = 8),   # top 8 contributors only
+                          title = "Microglia Morphology PCA Biplot",
+                          xlab = "PC1",
+                          ylab = "PC2",
+                          ggtheme = theme_minimal())
+pca_non_red_12 <- pca_non_red_12 + guides(alpha = "none")
+pca_non_red_12
+
+# creating a biplot that overlays PC2 and PC3, again visualizing only the top 8 contributing variables 
+pca_non_red_23 <- fviz_pca_biplot(static_microglia_non_red_pca,
+                          axes = c(2, 3),   
+                          geom = c("point"),
+                          label = "var",
+                          habillage = static_microglia_filtered$Treatment,
+                          col.var = "black",
+                          labelsize = 4,
+                          repel = TRUE,
+                          ggrepel.max.overlaps = Inf,
+                          alpha.var = "contrib", 
+                          select.var = list(contrib = 8),   # top 8 contributors only
+                          title = "Microglia Morphology PCA Biplot",
+                          xlab = "PC1 (55.3%)",
+                          ylab = "PC2 (20.0%)",
+                          ggtheme = theme_minimal())
+pca_non_red_23 <- pca_non_red_23 + guides(alpha = "none")
+pca_non_red_23
+
+# out of curiosity, creating a biplot of PC3 vs PC4 
+pca_non_red_34 <- fviz_pca_biplot(static_microglia_non_red_pca,
+                                  axes = c(3, 4),   
+                                  geom = c("point"),
+                                  label = "var",
+                                  habillage = static_microglia_filtered$Treatment,
+                                  col.var = "black",
+                                  labelsize = 4,
+                                  repel = TRUE,
+                                  ggrepel.max.overlaps = Inf,
+                                  alpha.var = "contrib", 
+                                  select.var = list(contrib = 8),   # top 8 contributors only
+                                  title = "Microglia Morphology PCA Biplot",
+                                  xlab = "PC1 (55.3%)",
+                                  ylab = "PC2 (20.0%)",
+                                  ggtheme = theme_minimal())
+pca_non_red_34 <- pca_non_red_34 + guides(alpha = "none")
+pca_non_red_34
+
+# i can use these plots (which both use functions in the same family as above) to visualize the data points and variables separately
+## data points
+fviz_pca_ind(static_microglia_non_red_pca, geom = "point",
+             habillage = static_microglia_filtered$Sex, addEllipses = TRUE)
+## variables 
+fviz_pca_var(static_microglia_non_red_pca, col.var = "contrib",
+             select.var = list(contrib = 8), 
+             gradient.cols = c("blue", "orange", "red"), repel = TRUE)
+
+
+# now I can also create a 3D scatterplot to look at the spread of PCs 1-3
+## i will do this using the plotly package 
+library(plotly)
+
+# identifying the scores for the first 3 PCs, plus the grouping variable (treatment)
+scores_non_red <- as.data.frame(static_microglia_non_red_pca$x[, 1:3])
+scores_non_red$Treatment <- static_microglia_filtered$Treatment
+
+# generating the variance explained, for the axis labels
+ve <- round(summary(static_microglia_non_red_pca)$importance[2, ] * 100, 1)
+
+# creating the 3D scatter plot 
+fig_non_red <- plot_ly(scores_non_red,
+               x = ~PC1, y = ~PC2, z = ~PC3,
+               color = ~Treatment,
+               colors = c(CON = "#E69F00", COLD = "#0072B2"),
+               type = "scatter3d",
+               mode = "markers",
+               marker = list(size = 1, opacity = 0.8))
+
+fig_non_red <- fig_non_red %>% layout(
+  title = "Microglia Morphology PCA (PC1-PC3)",
+  scene = list(
+    xaxis = list(title = paste0("PC1 (", ve[1], "%)")),
+    yaxis = list(title = paste0("PC2 (", ve[2], "%)")),
+    zaxis = list(title = paste0("PC3 (", ve[3], "%)"))
+  )
+)
+fig_non_red
+
+# ------------------------------------------------------------------------------
 
 
 
 
-#----------------------------
-# can't get this to work - is it worth it?
 
 
 # try plotly for 3d scatter -- 
