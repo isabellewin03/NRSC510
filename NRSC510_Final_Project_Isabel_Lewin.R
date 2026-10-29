@@ -4,18 +4,18 @@
 ## Isabel Lewin 
 
 # installing new packages that I will need for PCA + data visualization
-#install.packages("factoextra") # for PCA 
+#install.packages("factoextra") # for some PCA visualizations
 #install.packages("MASS")
 #install.packages("plotly") # for 3D scatter plot 
 #install.packages("ggbiplot") # for creating PCA biplots using ggplot
 
-# libraries 
+# loading packages that I will use for this project
 library(vroom)
 library(dplyr)
 library(ggplot2)
+library(ggbiplot)
 library(factoextra)
 library(MASS)
-library(ggbiplot)
 
 # ------------------------------------------------------------------------------
 # DATA CLEANING AND SET-UP
@@ -85,7 +85,8 @@ static_microglia_num_cols <- sapply(static_microglia_filtered, is.numeric)
 # now I will use the lapply() function to standardize the numeric columns in my dataset 
 ## i will perform z-standardization, using the following operation: z = (value - mean)/standard deviation, where z is the new, standardized value 
 ### the scale() function automatically performs z-scoring so I will use it for this case
-static_microglia_filtered[static_microglia_num_cols] <- lapply(static_microglia_filtered[static_microglia_num_cols], function(x) as.numeric(scale(x)))
+static_microglia_filtered[static_microglia_num_cols] <- lapply(static_microglia_filtered[static_microglia_num_cols], 
+                                                               function(x) as.numeric(scale(x)))
 
 # checking to make sure my standardized dataset looks correct
 View(static_microglia_filtered)
@@ -94,7 +95,7 @@ View(static_microglia_filtered)
 # now I will run a PCA using the function prcomp()
 ## here, I excluded columns 1-7 from analysis because they are categorical variables and I don't want them in my analysis
 static_microglia_pca <- prcomp(static_microglia_filtered[,-c(1:7)], 
-                               scale = TRUE)
+                               scale = FALSE)
 
 # checking out my data to make sure it looks right after doing PCA 
 summary(static_microglia_pca)
@@ -290,7 +291,7 @@ glimpse(static_microglia_non_red)
 
 # now that I have removed these highly correlated variables from my dataset, I am going to perform PCA again using the steps from above 
 static_microglia_non_red_pca <- prcomp(static_microglia_non_red[,-c(1:7)], 
-                                   scale = TRUE)
+                                   scale = FALSE)
 
 # generating a scree plot to help me decide how many components to retain in my analysis 
 fviz_eig(static_microglia_non_red_pca, 
@@ -315,22 +316,29 @@ ggplot(pca_scree, aes(x = PC, y = Eigenvalue)) +
 
 # now I am going to make biplots to visualize the spread of my data with PCA
 # biplot that overlays PC1 and PC2 
-ggbiplot(static_microglia_non_red_pca,
-         groups = static_microglia_non_red$Treatment,
-         ellipse = TRUE,
-         var.axes = TRUE,
-         varname.size = 2,
-         varname.adjust = 2,
-         alpha = 0.4,
-         repel = TRUE, 
-         vector.args = list(linewidth = 0.3)) +
-  scale_color_manual(values = c(CON = "darkorange", COLD = "cornflowerblue")) +
-  scale_fill_manual(values = c(CON = "darkorange", COLD = "cornflowerblue")) +
-  guides(shape = "none") +
-  theme_minimal() +
-  labs(title = "Biplot of PC1 and PC2",
-       color = "Treatment", fill = "Treatment") +
-  coord_fixed()
+biplot_PCA_12 <- ggbiplot(static_microglia_non_red_pca,
+                           groups = static_microglia_non_red$Treatment,
+                           ellipse = TRUE,
+                           var.axes = TRUE,
+                           varname.size = 2,
+                           varname.adjust = 2,
+                           alpha = 0.4,
+                           repel = TRUE, 
+                           vector.args = list(linewidth = 0.3)) +
+                    scale_color_manual(values = c(CON = "darkorange", COLD = "cornflowerblue")) +
+                    scale_fill_manual(values = c(CON = "darkorange", COLD = "cornflowerblue")) +
+                    guides(shape = "none") +
+                    theme_minimal() +
+                    labs(title = "Biplot of PC1 and PC2",
+                         color = "Treatment", fill = "Treatment") +
+                    coord_fixed()
+biplot_PCA_12
+
+# saving biplot as an svg file so I can edit the positioning of the variable labels which are currently overlapping in R 
+## when I need to do edit the labels on the other plots, I will use these same lines of code
+#install.packages("svglite")
+library(svglite)
+ggsave("biplot_PC1_PC2.svg", biplot_PCA_12, width = 4, height = 6)
 
 # biplot that overlays PC2 and PC3
 ggbiplot(static_microglia_non_red_pca,
@@ -347,7 +355,7 @@ ggbiplot(static_microglia_non_red_pca,
   scale_fill_manual(values = c(CON = "darkorange", COLD = "cornflowerblue")) +
   guides(shape = "none") +
   theme_minimal() +
-  labs(title = "Biplot of PC1 and PC2",
+  labs(title = "Biplot of PC2 and PC3",
        color = "Treatment", fill = "Treatment") +
   coord_fixed()
 
@@ -366,7 +374,7 @@ ggbiplot(static_microglia_non_red_pca,
   scale_fill_manual(values = c(CON = "darkorange", COLD = "cornflowerblue")) +
   guides(shape = "none") +
   theme_minimal() +
-  labs(title = "Biplot of PC1 and PC2",
+  labs(title = "Biplot of PC3 and PC4",
        color = "Treatment", fill = "Treatment") +
   coord_fixed()
 
@@ -404,23 +412,6 @@ fig_non_red
 
 
 
-
-
-
-# plots 
-# PC1 vs 2
-# colour scatterplots, make it heatmap 
-# ggplot 
-
-
-# tips from margo:
-
-# if data looks odd:
-# remove outliers?
-# make sure to use variables that are unique -- no summaries of the same variable (ie. mean and std)
-# check to see if log normalization or another norm method might help remove noise 
-# try visualizing pc1-4 to check how many pcs you have 
-# if more than 3, could use umap 
 
 
 
