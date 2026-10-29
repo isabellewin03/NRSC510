@@ -1,5 +1,5 @@
 # NRSC510
-**This is Isabel Lewin's GitHub repository for the 2026 NRSC510 Topics in Neurodata course**
+### **This is Isabel Lewin's GitHub repository for the 2026 NRSC510 Topics in Neurodata course**
 
 Stored in this repository are the [data analysis R scripts](https://github.com/isabellewin03/NRSC510/blob/main/NRSC510_Final_Project_Isabel_Lewin.R) that were created for the NRSC510 final project 
 
