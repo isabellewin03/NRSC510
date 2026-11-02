@@ -409,8 +409,114 @@ fig_non_red <- fig_non_red %>% layout(
 fig_non_red
 
 # ------------------------------------------------------------------------------
+# CONDUCTING K-MEANS CLUSTERING 
+
+# (for now at least) I am going to keep PCs 1-3 for this analysis 
+
+# setting the seed to keep my results reproducible each time I run the code 
+set.seed(123)
+
+# determining the optimal number of clusters
+## using the eblow method 
+static_microglia_pc1_3 <- static_microglia_non_red_pca$x[,1:3]
+k_values <- 1:10
+
+wss <- sapply(k_values, function(k) {
+  kmeans(static_microglia_pc1_3, centers = k, nstart = 25, iter.max = 100)$tot.withinss
+})
+
+elbow_df <- data.frame(k = k_values, wss = wss)
+
+ggplot(elbow_df, aes(k, wss)) +
+  geom_line() +
+  geom_point(size = 2) +
+  scale_x_continuous(breaks = k_values) +
+  labs(x = "Number of clusters (k)",
+       y = "Total within-cluster sum of squares",
+       title = "Elbow plot") +
+  theme_minimal()
+# this method identifies 3-5 clusters as optimal
+
+## using the silhouette method 
+idx <- sample(nrow(static_microglia_pc1_3), min(5000, nrow(static_microglia_pc1_3)))
+fviz_nbclust(static_microglia_pc1_3[idx, ], kmeans, method = "silhouette", k.max = 10, nstart = 25)
+# this method identifies 2 clusters as the best to use 
+
+# these two methods don't really correlate well because the points in my dataset were in one large cloud after PCA 
+## for this reason, I will test several cluster numbers and go from there 
+### I will test 2-6 clusters for my data 
+
+# setting k = 3 to start 
+## running kmeans()
+static_microglia_kmeans_3 <- kmeans(static_microglia_pc1_3, centers = 3, nstart = 25)
+## printing out the values obtained from this computation 
+### size = number of cells per cluster
+str(static_microglia_kmeans_3)
+
+# visualizing clusters using fviz_cluster()
+fviz_cluster(static_microglia_kmeans_3, data = static_microglia_pc1_3)
+
+# calculating the averages of each variable by cluster to try to interpret what each cluster means 
+## adding a cluster column to my df 
+static_microglia_non_red$Cluster <- factor(static_microglia_kmeans_3$cluster)
+## parsing out the numeric columns from the new df using sapply() again
+static_microglia_non_red_num_cols <- static_microglia_non_red[sapply(static_microglia_non_red, is.numeric)]
+
+# averaging the values for each variable from each cluster (note: I am taking the means of the SCALED values)
+## this step divides each clusters and takes the mean value of each variable for that specific cluster 
+static_microglia_cluster_means <- aggregate(static_microglia_non_red_num_cols,
+                           by = list(Cluster = static_microglia_non_red$Cluster),
+                           FUN = mean)
+static_microglia_cluster_means[-1] <- round(static_microglia_cluster_means[-1], 2)
+# printing a table with the mean values for each variable from each cluster
+static_microglia_cluster_means
+# since the values were z-standardized, each value is in standard deviation units relative to all cells
+## if the value is positive, it is above average, negative is below average, 0 = exactly average 
+
+# visualizing this as a heatmap for convenience 
+#install.packages('pheatmap')
+library(pheatmap)
+pheatmap(t(static_microglia_cluster_means[, -1]), labels_col = static_microglia_cluster_means$Cluster,
+         cluster_cols = FALSE, scale = "none")
+
+# based on these results, each cluster represents the following morphological group: 
+## cluster 1: ameboid (highest circularity, low branch length, area, number of branches, etc.)
+## cluster 2: rod-like (low circularity, high branch length, ratio of hull axes)
+## cluster 3: ramified (high number of branches, triple points, area)
+
+# plotting clusters on biplot of PC1 and PC2
+ggbiplot(static_microglia_non_red_pca,
+                          groups = static_microglia_non_red$Cluster,
+                          #ellipse = TRUE,
+                          var.axes = TRUE,
+                          varname.size = 2,
+                          varname.adjust = 2,
+                          alpha = 0.4,
+                          repel = TRUE, 
+                          vector.args = list(linewidth = 0.3)) +
+  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue")) +
+  scale_fill_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue")) +
+  guides(shape = "none") +
+  theme_minimal() +
+  labs(title = "Biplot of PC1 and PC2",
+       color = "Cluster", fill = "Cluster") +
+  coord_fixed()
 
 
+
+
+# trying with other #k 
+# setting k = 4
+static_microglia_kmeans_4 <- kmeans(static_microglia_pc1_3, centers = 4, nstart = 25)
+# setting k = 5 
+static_microglia_kmeans_5 <- kmeans(static_microglia_pc1_3, centers = 5, nstart = 25)
+# setting k = 6
+static_microglia_kmeans_6 <- kmeans(static_microglia_pc1_3, centers = 6, nstart = 25)
+
+# doing the same for 4, 5, and 6
+fviz_cluster(static_microglia_kmeans_4, data = static_microglia_pc1_3)
+fviz_cluster(static_microglia_kmeans_5, data = static_microglia_pc1_3)
+fviz_cluster(static_microglia_kmeans_6, data = static_microglia_pc1_3)
 
 
 
