@@ -502,8 +502,18 @@ ggbiplot(static_microglia_non_red_pca,
        color = "Cluster", fill = "Cluster") +
   coord_fixed()
 
+# now I want to perform statistical tests to confirm the differences between groups 
+
+# starting by looking at the variable circularity
+# using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Circularity ~ Cluster, data = static_microglia_non_red)
+# post-hoc test: wilcox/mann-whitney u-test 
+pairwise.wilcox.test(static_microglia_non_red$Circularity, 
+                     static_microglia_non_red$Cluster, 
+                     p.adjust.method = "BH") # BH/FDR correction for multiple testing
 
 
+# ------------------------------------------------------------------------------
 
 # trying with other #k 
 # setting k = 4
@@ -519,5 +529,6 @@ fviz_cluster(static_microglia_kmeans_5, data = static_microglia_pc1_3)
 fviz_cluster(static_microglia_kmeans_6, data = static_microglia_pc1_3)
 
 
-
+# ------------------------------------------------------------------------------
+# wardd2 clustering 
 
