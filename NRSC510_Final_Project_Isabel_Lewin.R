@@ -105,7 +105,7 @@ summary(static_microglia_pca)
 names(static_microglia_pca)
 # looking at each one individually: 
 static_microglia_pca$sdev # this is the standard deviation of the components 
-static_microglia_pca$rotation # these are the Eigenvectors 
+static_microglia_pca$rotation # these are the eigenvectors 
 static_microglia_pca$center # this is the standard deviation of the variables 
 static_microglia_pca$scale # this is the mean of the variables 
 static_microglia_pca$x # these are the PCA scores for all of the components 
@@ -140,7 +140,7 @@ ggplot(pca_scree, aes(x = PC, y = Eigenvalue)) +
 
 # since these are the PCs I'm mainly interested in, I can make a component matrix table with them alone for easier viewing
 ## component matrix for PCs 1-3
-component_matrix_PC123 <- static_microglia_pca$rotation[,-c(4:27)] # these are the Eigenvectors 
+component_matrix_PC123 <- static_microglia_pca$rotation[,-c(4:27)] # these are the eigenvectors
 View(component_matrix_PC123)
 
 # now I am going to make biplots to visualize the spread of my data with PCA
@@ -409,7 +409,7 @@ fig_non_red <- fig_non_red %>% layout(
 fig_non_red
 
 # ------------------------------------------------------------------------------
-# CONDUCTING K-MEANS CLUSTERING 
+# CONDUCTING K-MEANS CLUSTERING (k=3)
 
 # (for now at least) I am going to keep PCs 1-3 for this analysis 
 
@@ -439,7 +439,7 @@ ggplot(elbow_df, aes(k, wss)) +
 
 ## using the silhouette method 
 idx <- sample(nrow(static_microglia_pc1_3), min(5000, nrow(static_microglia_pc1_3)))
-fviz_nbclust(static_microglia_pc1_3[idx, ], kmeans, method = "silhouette", k.max = 10, nstart = 25)
+fviz_nbclust(static_microglia_pc1_3[idx, ], kmeans, method = "silhouette", k.min = 1, k.max = 10, nstart = 25)
 # this method identifies 2 clusters as the best to use 
 
 # these two methods don't really correlate well because the points in my dataset were in one large cloud after PCA 
@@ -457,15 +457,19 @@ str(static_microglia_kmeans_3)
 fviz_cluster(static_microglia_kmeans_3, data = static_microglia_pc1_3)
 
 # calculating the averages of each variable by cluster to try to interpret what each cluster means 
-## adding a cluster column to my df 
-static_microglia_non_red$Cluster <- factor(static_microglia_kmeans_3$cluster)
+## creating a copy of my df and adding k=3 cluster column 
+### making a copy of the df
+static_microglia_non_red_k3 <- static_microglia_non_red
+static_microglia_non_red_k3$Cluster <- factor(static_microglia_kmeans_3$cluster)
+View(static_microglia_non_red_k3) # it worked!
+
 ## parsing out the numeric columns from the new df using sapply() again
-static_microglia_non_red_num_cols <- static_microglia_non_red[sapply(static_microglia_non_red, is.numeric)]
+static_microglia_non_red_k3_num_cols <- static_microglia_non_red_k3[sapply(static_microglia_non_red_k3, is.numeric)]
 
 # averaging the values for each variable from each cluster (note: I am taking the means of the SCALED values)
 ## this step divides each clusters and takes the mean value of each variable for that specific cluster 
-static_microglia_cluster_means <- aggregate(static_microglia_non_red_num_cols,
-                           by = list(Cluster = static_microglia_non_red$Cluster),
+static_microglia_cluster_means <- aggregate(static_microglia_non_red_k3_num_cols,
+                           by = list(Cluster = static_microglia_non_red_k3$Cluster),
                            FUN = mean)
 static_microglia_cluster_means[-1] <- round(static_microglia_cluster_means[-1], 2)
 # printing a table with the mean values for each variable from each cluster
@@ -486,7 +490,7 @@ pheatmap(t(static_microglia_cluster_means[, -1]), labels_col = static_microglia_
 
 # plotting clusters on biplot of PC1 and PC2
 ggbiplot(static_microglia_non_red_pca,
-                          groups = static_microglia_non_red$Cluster,
+                          groups = static_microglia_non_red_k3$Cluster,
                           #ellipse = TRUE,
                           var.axes = TRUE,
                           varname.size = 2,
@@ -502,33 +506,184 @@ ggbiplot(static_microglia_non_red_pca,
        color = "Cluster", fill = "Cluster") +
   coord_fixed()
 
-# now I want to perform statistical tests to confirm the differences between groups 
+# now I will perform statistical tests to evaluate the differences between clusters
+## I will examine how similar each cluster is based on different variables 
+### I will choose variables that have large loadings and correlate with a certain cluster 
 
-# starting by looking at the variable circularity
-# using kruskall wallis, which is the non-parametric version of anova
-kruskal.test(Circularity ~ Cluster, data = static_microglia_non_red)
+# calculating the pca loadings to have an empirical measure when choosing variabels 
+pca_loadings <- static_microglia_non_red_pca$rotation %*% diag(static_microglia_non_red_pca$sdev)
+pca_loadings
+
+
+## testing variable: FOREGROUND PIXELS - large loading magnitude, aligns with cluster 1
+# I am using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Foreground.pixels ~ Cluster, data = static_microglia_non_red_k3)
+# results: chi-squared = 16811, df = 2, p-value < 2.2e-16
+# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
 # post-hoc test: wilcox/mann-whitney u-test 
-pairwise.wilcox.test(static_microglia_non_red$Circularity, 
-                     static_microglia_non_red$Cluster, 
-                     p.adjust.method = "BH") # BH/FDR correction for multiple testing
+pairwise.wilcox.test(static_microglia_non_red_k3$Foreground.pixels, 
+                     static_microglia_non_red_k3$Cluster, 
+                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
+# results: p<2e-16 for each comparison of two clusters 
+# indicates that each cluster has significant differences in foreground pixels 
 
+## testing variable: MAX/MIN RATIO OF HULL AXES (measure of cell shape - circularity/length) - large loading magnitude, aligns with cluster 2
+# I am using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Max.min.hull.radius  ~ Cluster, data = static_microglia_non_red_k3)
+# results: chi-squared = 14532, df = 2, p-value < 2.2e-16
+# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
+# post-hoc test: wilcox/mann-whitney u-test 
+pairwise.wilcox.test(static_microglia_non_red_k3$Max.min.hull.radius, 
+                     static_microglia_non_red_k3$Cluster, 
+                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
+# results: p<2e-16 for each comparison of two clusters 
+# indicates that each cluster has significant differences in cell max/min hull radius (measure of cell shape - circularity/length)
+
+## testing variable: CIRCULARITY - large loading magnitude, aligns with cluster 3
+# I am using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Circularity ~ Cluster, data = static_microglia_non_red_k3)
+# results: chi-squared = 16076, df = 2, p-value < 2.2e-16
+# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
+# post-hoc test: wilcox/mann-whitney u-test 
+pairwise.wilcox.test(static_microglia_non_red_k3$Circularity, 
+                     static_microglia_non_red_k3$Cluster, 
+                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
+# results: p<2e-16 for each comparison of two clusters 
+# indicates that each cluster has significant differences in cell circularity
+
+# after running these stats, I can confirm that my data 
 
 # ------------------------------------------------------------------------------
+# CONDUCTING K-MEANS CLUSTERING (k=4, 5 and 6)
 
-# trying with other #k 
 # setting k = 4
 static_microglia_kmeans_4 <- kmeans(static_microglia_pc1_3, centers = 4, nstart = 25)
+fviz_cluster(static_microglia_kmeans_4, data = static_microglia_pc1_3)
+# creating new df with added cluster column 
+static_microglia_non_red_k4 <- static_microglia_non_red
+static_microglia_non_red_k4$Cluster <- factor(static_microglia_kmeans_4$cluster)
+# plotting clusters on biplot of PC1 and PC2
+ggbiplot(static_microglia_non_red_pca,
+         groups = static_microglia_non_red_k4$Cluster,
+         #ellipse = TRUE,
+         var.axes = TRUE,
+         varname.size = 2,
+         varname.adjust = 2,
+         alpha = 0.4,
+         repel = TRUE, 
+         vector.args = list(linewidth = 0.3)) +
+  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen")) +
+  scale_fill_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen")) +
+  guides(shape = "none") +
+  theme_minimal() +
+  labs(title = "Biplot of PC1 and PC2",
+       color = "Cluster", fill = "Cluster") +
+  coord_fixed()
+
+
 # setting k = 5 
 static_microglia_kmeans_5 <- kmeans(static_microglia_pc1_3, centers = 5, nstart = 25)
+fviz_cluster(static_microglia_kmeans_5, data = static_microglia_pc1_3)
+# creating new df with added cluster column 
+static_microglia_non_red_k5 <- static_microglia_non_red
+static_microglia_non_red_k5$Cluster <- factor(static_microglia_kmeans_5$cluster)
+# plotting clusters on biplot of PC1 and PC2
+ggbiplot(static_microglia_non_red_pca,
+         groups = static_microglia_non_red_k5$Cluster,
+         #ellipse = TRUE,
+         var.axes = TRUE,
+         varname.size = 2,
+         varname.adjust = 2,
+         alpha = 0.4,
+         repel = TRUE, 
+         vector.args = list(linewidth = 0.3)) +
+  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen", '5' = "magenta")) +
+  scale_fill_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen", '5' = "magenta")) +
+  guides(shape = "none") +
+  theme_minimal() +
+  labs(title = "Biplot of PC1 and PC2",
+       color = "Cluster", fill = "Cluster") +
+  coord_fixed()
+
 # setting k = 6
 static_microglia_kmeans_6 <- kmeans(static_microglia_pc1_3, centers = 6, nstart = 25)
-
-# doing the same for 4, 5, and 6
-fviz_cluster(static_microglia_kmeans_4, data = static_microglia_pc1_3)
-fviz_cluster(static_microglia_kmeans_5, data = static_microglia_pc1_3)
 fviz_cluster(static_microglia_kmeans_6, data = static_microglia_pc1_3)
+# creating new df with added cluster column 
+static_microglia_non_red_k6 <- static_microglia_non_red
+static_microglia_non_red_k6$Cluster <- factor(static_microglia_kmeans_6$cluster)
+# plotting clusters on biplot of PC1 and PC2
+ggbiplot(static_microglia_non_red_pca,
+         groups = static_microglia_non_red_k6$Cluster,
+         #ellipse = TRUE,
+         var.axes = TRUE,
+         varname.size = 2,
+         varname.adjust = 2,
+         alpha = 0.4,
+         repel = TRUE, 
+         vector.args = list(linewidth = 0.3)) +
+  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen", '5' = "magenta", '6' = "yellow")) +
+  scale_fill_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen", '5' = "magenta", '6' = "yellow")) +
+  guides(shape = "none") +
+  theme_minimal() +
+  labs(title = "Biplot of PC1 and PC2",
+       color = "Cluster", fill = "Cluster") +
+  coord_fixed()
+
+# ------------------------------------------------------------------------------
+# RUNNING SILHOUETTE TEST AND DUNN INDEX
+
+# these tests will help me determine which k=n is best 
+
+# revisiting the silhouette plot I used before
+idx <- sample(nrow(static_microglia_pc1_3), min(5000, nrow(static_microglia_pc1_3)))
+fviz_nbclust(static_microglia_pc1_3[idx, ], kmeans, method = "silhouette", k.max = 10, nstart = 25)
+
+# now I'm going to print the silhouette widths for each k value 
+library(cluster) # cluster has the silhouette function that I will use
+# making list of my clustering attempts with different k values 
+km_list <- list(k3 = static_microglia_kmeans_3, k4 = static_microglia_kmeans_4, k5 = static_microglia_kmeans_5, k6 = static_microglia_kmeans_6)
+set.seed(123)
+d <- dist(static_microglia_pc1_3[idx, ])
+# calculating average silhouette width for each k
+sil_avg <- sapply(km_list, function(m) {
+  s <- silhouette(m$cluster[idx], d)
+  mean(s[, "sil_width"])
+})
+round(sil_avg, 3)
+# k = 3 has the highest value, so that will be what I use for analysis, presentations, etc 
+
+# calculating Dunn index 
+#install.packages("clValid")
+library(clValid)
+dunn_values <- sapply(km_list, function(m) dunn(distance = d, clusters = m$cluster[idx]))
+round(dunn_values, 4)
+# making a plot of Dunn values 
+k_values <- 1:10
+dunn_values <- sapply(k_values, function(k) {
+  set.seed(123)
+  km_k <- kmeans(static_microglia_pc1_3, centers = k, nstart = 25)
+  dunn(distance = d, clusters = km_k$cluster[idx])
+})
+
+plot(k_values, dunn_values, type = "b", pch = 19,
+     xlab = "Number of clusters k", ylab = "Dunn index",
+     main = "Dunn index by number of clusters")
 
 
 # ------------------------------------------------------------------------------
-# wardd2 clustering 
+# CONDUCTING WARDD2 CLUSTERING 
+
+# this is a hierarchical clustering method suggested by Margo 
+## website that I referenced (URL): https://rstudio-pubs-static.s3.amazonaws.com/599072_93cf94954aa64fc7a4b99ca524e5371c.html#Hierarchical_clustering
+
+# making a distance matrix for my data (from PCA)
+## using euclidean distance as it is best for continuous data 
+static_microglia_pc1_3_dist_matrix <- dist(static_microglia_pc1_3, method = "euclidean")
+# using the hclust() function, which performs different types of heirarchical clustering 
+static_microglia_pc1_3_wardd2 <- hclust(static_microglia_pc1_3_dist_matrix, method = "ward.D2")
+# plotting this using a cluster dendrogram 
+plot(static_microglia_pc1_3_wardd2, cex=0.4)
+rect.hclust(static_microglia_pc1_3_wardd2, k=5)
+
+options(future.globals.maxSize = 200000 * 1024^2)
 
