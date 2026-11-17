@@ -8,6 +8,8 @@
 #install.packages("MASS")
 #install.packages("plotly") # for 3D scatter plot 
 #install.packages("ggbiplot") # for creating PCA biplots using ggplot
+#install.packages("fastcluster") # for faster clustering
+
 
 # loading packages that I will use for this project
 library(vroom)
@@ -16,6 +18,7 @@ library(ggplot2)
 library(ggbiplot)
 library(factoextra)
 library(MASS)
+library(fastcluster)
 
 # ------------------------------------------------------------------------------
 # DATA CLEANING AND SET-UP
@@ -438,6 +441,7 @@ ggplot(elbow_df, aes(k, wss)) +
 # this method identifies 3-5 clusters as optimal
 
 ## using the silhouette method 
+### creating a subsample for it to use because my dataset is so large 
 idx <- sample(nrow(static_microglia_pc1_3), min(5000, nrow(static_microglia_pc1_3)))
 fviz_nbclust(static_microglia_pc1_3[idx, ], kmeans, method = "silhouette", k.min = 1, k.max = 10, nstart = 25)
 # this method identifies 2 clusters as the best to use 
@@ -554,7 +558,7 @@ pairwise.wilcox.test(static_microglia_non_red_k3$Circularity,
 # after running these stats, I can confirm that my data 
 
 # ------------------------------------------------------------------------------
-# CONDUCTING K-MEANS CLUSTERING (k=4, 5 and 6)
+# CONDUCTING K-MEANS CLUSTERING (k=4, 5, 6, and 2)
 
 # setting k = 4
 static_microglia_kmeans_4 <- kmeans(static_microglia_pc1_3, centers = 4, nstart = 25)
@@ -629,19 +633,45 @@ ggbiplot(static_microglia_non_red_pca,
        color = "Cluster", fill = "Cluster") +
   coord_fixed()
 
+# setting k = 2
+static_microglia_kmeans_2 <- kmeans(static_microglia_pc1_3, centers = 2, nstart = 25)
+fviz_cluster(static_microglia_kmeans_2, data = static_microglia_pc1_3)
+# creating new df with added cluster column 
+static_microglia_non_red_k2 <- static_microglia_non_red
+static_microglia_non_red_k2$Cluster <- factor(static_microglia_kmeans_2$cluster)
+# plotting clusters on biplot of PC1 and PC2
+ggbiplot(static_microglia_non_red_pca,
+         groups = static_microglia_non_red_k2$Cluster,
+         #ellipse = TRUE,
+         var.axes = TRUE,
+         varname.size = 2,
+         varname.adjust = 2,
+         alpha = 0.4,
+         repel = TRUE, 
+         vector.args = list(linewidth = 0.3)) +
+  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue")) +
+  scale_fill_manual(values = c('1' = "darkorange", '2' = "cornflowerblue")) +
+  guides(shape = "none") +
+  theme_minimal() +
+  labs(title = "Biplot of PC1 and PC2",
+       color = "Cluster", fill = "Cluster") +
+  coord_fixed()
+
 # ------------------------------------------------------------------------------
-# RUNNING SILHOUETTE TEST AND DUNN INDEX
+# RUNNING SILHOUETTE TEST AND DUNN INDEX FOR K-MEANS CLUSTERS
 
 # these tests will help me determine which k=n is best 
 
 # revisiting the silhouette plot I used before
+## first creating a subsample to take from because my dataset is so large 
+set.seed(123)
 idx <- sample(nrow(static_microglia_pc1_3), min(5000, nrow(static_microglia_pc1_3)))
 fviz_nbclust(static_microglia_pc1_3[idx, ], kmeans, method = "silhouette", k.max = 10, nstart = 25)
 
 # now I'm going to print the silhouette widths for each k value 
 library(cluster) # cluster has the silhouette function that I will use
 # making list of my clustering attempts with different k values 
-km_list <- list(k3 = static_microglia_kmeans_3, k4 = static_microglia_kmeans_4, k5 = static_microglia_kmeans_5, k6 = static_microglia_kmeans_6)
+km_list <- list(k2 = static_microglia_kmeans_2, k3 = static_microglia_kmeans_3, k4 = static_microglia_kmeans_4, k5 = static_microglia_kmeans_5, k6 = static_microglia_kmeans_6)
 set.seed(123)
 d <- dist(static_microglia_pc1_3[idx, ])
 # calculating average silhouette width for each k
@@ -650,7 +680,7 @@ sil_avg <- sapply(km_list, function(m) {
   mean(s[, "sil_width"])
 })
 round(sil_avg, 3)
-# k = 3 has the highest value, so that will be what I use for analysis, presentations, etc 
+# k = 2 has the highest value, which means 2 clusters are the most optimal 
 
 # calculating Dunn index 
 #install.packages("clValid")
@@ -668,22 +698,72 @@ dunn_values <- sapply(k_values, function(k) {
 plot(k_values, dunn_values, type = "b", pch = 19,
      xlab = "Number of clusters k", ylab = "Dunn index",
      main = "Dunn index by number of clusters")
+# for values of k between 2-6, k=2 has the highest Dunn index 
+## however, these values are extremely low and close together, so it is not as straightforward when interpreting them
 
 
 # ------------------------------------------------------------------------------
 # CONDUCTING WARDD2 CLUSTERING 
 
-# this is a hierarchical clustering method suggested by Margo 
+# since the k-means algorithm is best-suited for round, spherical clusters and my data is very compact and groups aren't spread out, I wanted to attempt another method 
+## my data are very spread out because they are from embryonic samples, where microglial morphologies are less distinct and more continuous between subtypes
+
+# wardD2 is a hierarchical clustering method suggested by Margo that works well with data that is tightly packed together 
 ## website that I referenced (URL): https://rstudio-pubs-static.s3.amazonaws.com/599072_93cf94954aa64fc7a4b99ca524e5371c.html#Hierarchical_clustering
 
-# making a distance matrix for my data (from PCA)
-## using euclidean distance as it is best for continuous data 
-static_microglia_pc1_3_dist_matrix <- dist(static_microglia_pc1_3, method = "euclidean")
-# using the hclust() function, which performs different types of heirarchical clustering 
-static_microglia_pc1_3_wardd2 <- hclust(static_microglia_pc1_3_dist_matrix, method = "ward.D2")
-# plotting this using a cluster dendrogram 
-plot(static_microglia_pc1_3_wardd2, cex=0.4)
-rect.hclust(static_microglia_pc1_3_wardd2, k=5)
 
-options(future.globals.maxSize = 200000 * 1024^2)
+# I am going to be using wardD2 clustering from the fastcluster package, which will allow me to run the whole dataset on my computer 
+static_microglia_pc1_3_wardd2 <- hclust.vector(as.matrix(static_microglia_pc1_3), method = "ward") #in this package, the method ward = wardD2 
+
+# creating a dendrogram to represent the clustering data
+plot(static_microglia_pc1_3_wardd2, cex = 0.4, labels = FALSE)
+
+# now I need to determine the optimal number of clusters from wardD2 clustering 
+## the first step is the 'vertical distance method'
+### in this method, you identify the longest vertical line that isn't intersected by horizontal lines and the number of vertical lines paralell to it is the number of clusters 
+#### in this case, it is ___ clusters
+
+# I can also use the elbow method (same as for K-means)
+## I need to use the subsample here because my computer does not have enough memory
+fviz_nbclust(static_microglia_pc1_3[idx,], FUN = hcut, hc_method = "ward.D2",
+             hc_metric = "euclidean", method = "wss", k.max = 10) +
+             labs(subtitle = "Elbow Method")
+# this tells me that again, 2 clusters is optimal (when choosing between 2-6 clusters)
+
+# lastly, I will use the silhouette method again to determine optimal wardD2 cluster number 
+## I need to use the subsample here because my computer does not have enough memory
+fviz_nbclust(static_microglia_pc1_3_sub, FUN = hcut, hc_method = "ward.D2",
+             hc_metric = "euclidean", method = "silhouette", k.max = 10) +
+             labs(subtitle = "Silhouette Method")
+# this method also identifies 2 clusters as optimal 
+
+# ploting data in PCA space with 2 wardD2 clusters 
+static_microglia_non_red_w2 <- static_microglia_non_red
+static_microglia_non_red_w2$Cluster <- factor(static_microglia_kmeans_4$cluster)
+
+
+
+
+# for measuring dendrogram lengths
+## incorporate into code
+h <- sort(static_microglia_pc1_3_wardd2$height, decreasing = TRUE)[1:10]
+
+# length of the vertical line that corresponds to each number of clusters k
+gaps <- data.frame(k = 2:10,
+                   gap = h[-length(h)] - h[-1])
+gaps
+
+# k with the longest vertical line
+gaps$k[which.max(gaps$gap)]
+
+barplot(gaps$gap, names.arg = gaps$k,
+        xlab = "Number of clusters k", ylab = "Length of vertical line (height gap)")
+
+
+# ------------------------------------------------------------------------------
+
+
+
+# from margo to extend running memory:
+#options(future.globals.maxSize = 200000 * 1024^2)
 
