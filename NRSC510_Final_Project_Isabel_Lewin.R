@@ -9,6 +9,7 @@
 #install.packages("plotly") # for 3D scatter plot 
 #install.packages("ggbiplot") # for creating PCA biplots using ggplot
 #install.packages("fastcluster") # for faster clustering
+#install.packages("uwot") # for umap 
 
 
 # loading packages that I will use for this project
@@ -19,6 +20,7 @@ library(ggbiplot)
 library(factoextra)
 library(MASS)
 library(fastcluster)
+library(uwot)
 
 # ------------------------------------------------------------------------------
 # DATA CLEANING AND SET-UP
@@ -412,46 +414,37 @@ fig_non_red <- fig_non_red %>% layout(
 fig_non_red
 
 # ------------------------------------------------------------------------------
-# CONDUCTING K-MEANS CLUSTERING (k=3)
+# CONDUCTING K-MEANS CLUSTERING 
 
-# (for now at least) I am going to keep PCs 1-3 for this analysis 
+# I am going to keep PCs 1-3 for this analysis, as they represent the majority of the variance 
 
 # setting the seed to keep my results reproducible each time I run the code 
-set.seed(123)
+set.seed(123) # I need to do this because I will be taking random subsamples 
 
 # determining the optimal number of clusters
-## using the eblow method 
-static_microglia_pc1_3 <- static_microglia_non_red_pca$x[,1:3]
-k_values <- 1:10
 
-wss <- sapply(k_values, function(k) {
-  kmeans(static_microglia_pc1_3, centers = k, nstart = 25, iter.max = 100)$tot.withinss
-})
+# first I am going to use the elbow method  
+### here I am taking a random subsample of 10k cells from my dataset to run this on because my computer does not have enough memory to run on the whole dataset
+static_microglia_subsample <- sample(nrow(static_microglia_pc1_3), 
+                                     min(10000, nrow(static_microglia_pc1_3)), 
+                                     replace = FALSE)
+fviz_nbclust(static_microglia_pc1_3[static_microglia_subsample,], FUNcluster = kmeans, 
+             method = "wss", k.max = 10, nstart = 25, iter.max = 200) +
+             labs(subtitle = "Elbow Method")
+# this method suggests that either k = 2 or k = 4 is optimal (those are where slight plateaus occur)
 
-elbow_df <- data.frame(k = k_values, wss = wss)
+# now I am going to use the silhouette method 
+fviz_nbclust(static_microglia_pc1_3[static_microglia_subsample, ], kmeans, 
+             method = "silhouette", k.max = 10, nstart = 25, iter.max = 200) +
+             labs(subtitle = "Silhouette Method")
+# this method suggests that k = 2 is optimal 
 
-ggplot(elbow_df, aes(k, wss)) +
-  geom_line() +
-  geom_point(size = 2) +
-  scale_x_continuous(breaks = k_values) +
-  labs(x = "Number of clusters (k)",
-       y = "Total within-cluster sum of squares",
-       title = "Elbow plot") +
-  theme_minimal()
-# this method identifies 3-5 clusters as optimal
-
-## using the silhouette method 
-### creating a subsample for it to use because my dataset is so large 
-idx <- sample(nrow(static_microglia_pc1_3), min(5000, nrow(static_microglia_pc1_3)))
-fviz_nbclust(static_microglia_pc1_3[idx, ], kmeans, method = "silhouette", k.min = 1, k.max = 10, nstart = 25)
-# this method identifies 2 clusters as the best to use 
-
-# these two methods don't really correlate well because the points in my dataset were in one large cloud after PCA 
-## for this reason, I will test several cluster numbers and go from there 
-### I will test 2-6 clusters for my data 
+# these two methods likely suggest that fewer clusters are better because the points in my dataset were in one tightly packed cloud after PCA 
+## this is because the morphologies in my dataset are very continuos, rather than discrete/dinstinct groups
+### for this reason, I will test several k-values ranging from 2-6
 
 # setting k = 3 to start 
-## running kmeans()
+## running kmeans() on my entire dataset of PC1-PC3
 static_microglia_kmeans_3 <- kmeans(static_microglia_pc1_3, centers = 3, nstart = 25)
 ## printing out the values obtained from this computation 
 ### size = number of cells per cluster
@@ -558,7 +551,7 @@ pairwise.wilcox.test(static_microglia_non_red_k3$Circularity,
 # after running these stats, I can confirm that my data 
 
 # ------------------------------------------------------------------------------
-# CONDUCTING K-MEANS CLUSTERING (k=4, 5, 6, and 2)
+# CONDUCTING K-MEANS CLUSTERING (k = 4, 5, 6, and 2)
 
 # setting k = 4
 static_microglia_kmeans_4 <- kmeans(static_microglia_pc1_3, centers = 4, nstart = 25)
@@ -660,11 +653,16 @@ ggbiplot(static_microglia_non_red_pca,
 # ------------------------------------------------------------------------------
 # RUNNING SILHOUETTE TEST AND DUNN INDEX FOR K-MEANS CLUSTERS
 
-# these tests will help me determine which k=n is best 
+# these tests will help me determine which k value is optimal 
 
-# revisiting the silhouette plot I used before
-## first creating a subsample to take from because my dataset is so large 
-set.seed(123)
+# I am going to create another random subsample that takes __ cells from each cluster 
+static_microglia_subsample <- sample(nrow(static_microglia_pc1_3), 
+                                     min(10000, nrow(static_microglia_pc1_3)), 
+                                     replace = FALSE)
+
+########## where I'm at 
+#### i think i need to transform km_list to subsample 3k cells per cluster somehow. i dont think this is possible when working on static_microglia_pc1_3 because it doesn't have clusters attatched to it
+
 idx <- sample(nrow(static_microglia_pc1_3), min(5000, nrow(static_microglia_pc1_3)))
 fviz_nbclust(static_microglia_pc1_3[idx, ], kmeans, method = "silhouette", k.max = 10, nstart = 25)
 
@@ -672,7 +670,7 @@ fviz_nbclust(static_microglia_pc1_3[idx, ], kmeans, method = "silhouette", k.max
 library(cluster) # cluster has the silhouette function that I will use
 # making list of my clustering attempts with different k values 
 km_list <- list(k2 = static_microglia_kmeans_2, k3 = static_microglia_kmeans_3, k4 = static_microglia_kmeans_4, k5 = static_microglia_kmeans_5, k6 = static_microglia_kmeans_6)
-set.seed(123)
+
 d <- dist(static_microglia_pc1_3[idx, ])
 # calculating average silhouette width for each k
 sil_avg <- sapply(km_list, function(m) {
@@ -719,8 +717,25 @@ static_microglia_pc1_3_wardd2 <- hclust.vector(as.matrix(static_microglia_pc1_3)
 plot(static_microglia_pc1_3_wardd2, cex = 0.4, labels = FALSE)
 
 # now I need to determine the optimal number of clusters from wardD2 clustering 
-## the first step is the 'vertical distance method'
-### in this method, you identify the longest vertical line that isn't intersected by horizontal lines and the number of vertical lines paralell to it is the number of clusters 
+## I will first use the 'vertical distance method'
+### in this method, you identify the longest vertical line that isn't intersected by horizontal lines and the number of vertical lines parallel to it is the number of clusters 
+
+# printing out the 
+dendrogram_heights <- sort(static_microglia_pc1_3_wardd2$height, decreasing = TRUE)[1:10]
+
+dendrogram_heights
+# length of the vertical line that corresponds to each number of clusters k
+gaps <- data.frame(k = 2:10,
+                   gap = dendrogram_heights[-length(dendrogram_heights)] - dendrogram_heights[-1])
+gaps
+
+View(gaps)
+# k with the longest vertical line
+gaps$k[which.max(gaps$gap)]
+
+barplot(gaps$gap, names.arg = gaps$k,
+        xlab = "Number of clusters k", ylab = "Length of vertical line (height gap)")
+
 #### in this case, it is ___ clusters
 
 # I can also use the elbow method (same as for K-means)
@@ -744,24 +759,23 @@ static_microglia_non_red_w2$Cluster <- factor(static_microglia_kmeans_4$cluster)
 
 
 
-# for measuring dendrogram lengths
-## incorporate into code
-h <- sort(static_microglia_pc1_3_wardd2$height, decreasing = TRUE)[1:10]
+# getting dendrogram heights
 
-# length of the vertical line that corresponds to each number of clusters k
-gaps <- data.frame(k = 2:10,
-                   gap = h[-length(h)] - h[-1])
-gaps
 
-# k with the longest vertical line
-gaps$k[which.max(gaps$gap)]
-
-barplot(gaps$gap, names.arg = gaps$k,
-        xlab = "Number of clusters k", ylab = "Length of vertical line (height gap)")
+# overlay of clusters on biplot
 
 
 # ------------------------------------------------------------------------------
+# UMAP DIMENSIONALITY REDUCTION
 
+# this is another method of dimensionality reduction that I want to use 
+
+
+
+
+
+
+# ------------------------------------------------------------------------------
 
 
 # from margo to extend running memory:
