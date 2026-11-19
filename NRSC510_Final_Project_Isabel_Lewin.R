@@ -8,7 +8,8 @@
 #install.packages("MASS")
 #install.packages("plotly") # for 3D scatter plot 
 #install.packages("ggbiplot") # for creating PCA biplots using ggplot
-#install.packages("fastcluster") # for faster clustering
+#install.packages("clValid") # for calculating the Dunn's index
+#install.packages("fastcluster") # for faster heirarchical clustering
 #install.packages("uwot") # for umap 
 
 
@@ -19,6 +20,7 @@ library(ggplot2)
 library(ggbiplot)
 library(factoextra)
 library(MASS)
+library(cluster) 
 library(fastcluster)
 library(uwot)
 
@@ -655,49 +657,76 @@ ggbiplot(static_microglia_non_red_pca,
 
 # these tests will help me determine which k value is optimal 
 
-# I am going to create another random subsample that takes __ cells from each cluster 
-static_microglia_subsample <- sample(nrow(static_microglia_pc1_3), 
-                                     min(10000, nrow(static_microglia_pc1_3)), 
-                                     replace = FALSE)
-
-########## where I'm at 
-#### i think i need to transform km_list to subsample 3k cells per cluster somehow. i dont think this is possible when working on static_microglia_pc1_3 because it doesn't have clusters attatched to it
-
-idx <- sample(nrow(static_microglia_pc1_3), min(5000, nrow(static_microglia_pc1_3)))
-fviz_nbclust(static_microglia_pc1_3[idx, ], kmeans, method = "silhouette", k.max = 10, nstart = 25)
-
-# now I'm going to print the silhouette widths for each k value 
-library(cluster) # cluster has the silhouette function that I will use
-# making list of my clustering attempts with different k values 
-km_list <- list(k2 = static_microglia_kmeans_2, k3 = static_microglia_kmeans_3, k4 = static_microglia_kmeans_4, k5 = static_microglia_kmeans_5, k6 = static_microglia_kmeans_6)
-
-d <- dist(static_microglia_pc1_3[idx, ])
-# calculating average silhouette width for each k
-sil_avg <- sapply(km_list, function(m) {
-  s <- silhouette(m$cluster[idx], d)
-  mean(s[, "sil_width"])
+# starting with the average silhouette width method 
+## first I am creating a list of all the k-means products I have created 
+all_kmeans <- list(k2 = static_microglia_kmeans_2, k3 = static_microglia_kmeans_3,
+                k4 = static_microglia_kmeans_4, k5 = static_microglia_kmeans_5,
+                k6 = static_microglia_kmeans_6)
+# now I am going to calculate the average silhouette widths (ASW) for each k-value 
+static_microglia_pc1_3_dist <- dist(static_microglia_pc1_3)   # distances between ALL cells
+sil_avg <- sapply(all_kmeans, function(m) {
+  silhouette_width <- silhouette(m$cluster, static_microglia_pc1_3_dist) # this calculates the AWS
+  mean(silhouette_width[, "sil_width"])
 })
 round(sil_avg, 3)
-# k = 2 has the highest value, which means 2 clusters are the most optimal 
 
-# calculating Dunn index 
-#install.packages("clValid")
-library(clValid)
-dunn_values <- sapply(km_list, function(m) dunn(distance = d, clusters = m$cluster[idx]))
-round(dunn_values, 4)
-# making a plot of Dunn values 
-k_values <- 1:10
-dunn_values <- sapply(k_values, function(k) {
-  set.seed(123)
-  km_k <- kmeans(static_microglia_pc1_3, centers = k, nstart = 25)
-  dunn(distance = d, clusters = km_k$cluster[idx])
-})
+##### NOTE: I've included this section of commented out code because I had a lot of issues dealing with a large dataset and having enough memory to do so
+# this code here uses a subsample of the objects within all_kmeans (see below) to work around this, however it is not ideal because it does not use the entire dataset
+# however, I wanted to include it as a backup option in case anyone references this script and needs another method that will use less memory to run
+#sil_avg <- sapply(all_kmeans, function(m) {
+  # sample 3000 cells (without replacement) from each cluster for each object in all_kmeans
+  # I need to use a subsample because my dataset is too large to run the analysis on all of my cells  
+#  cluster_subsample <- unlist(lapply(split(seq_along(m$cluster), m$cluster),
+#                                     function(i) i[sample.int(length(i), min(5000, length(i)))]))
+#  d <- dist(static_microglia_pc1_3[cluster_subsample, ])
+#  s <- silhouette(m$cluster[cluster_subsample], d)
+#  mean(s[, "sil_width"])
+#})
+#round(sil_avg, 3)
 
-plot(k_values, dunn_values, type = "b", pch = 19,
-     xlab = "Number of clusters k", ylab = "Dunn index",
-     main = "Dunn index by number of clusters")
-# for values of k between 2-6, k=2 has the highest Dunn index 
-## however, these values are extremely low and close together, so it is not as straightforward when interpreting them
+# now I will plot these values as I have done before
+sil_df <- data.frame(k = 2:6, sil = as.numeric(sil_avg))
+best_k <- sil_df$k[which.max(sil_df$sil)] # adds line at the optimal k-value 
+# using ggplot to recreate the style of silhouette plots in fviz_nbclust for the above analysis 
+ggplot(sil_df, aes(x = k, y = sil, group = 1)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "steelblue", size = 2) +
+  geom_vline(xintercept = best_k, linetype = "dashed", color = "steelblue") +
+  scale_x_continuous(breaks = sil_df$k) +
+  labs(title = "Optimal number of clusters (method = \"silhouette\")",
+       subtitle = "Silhouette Method",
+       x = "Number of clusters k",
+       y = "Average silhouette width") +
+  theme_classic()
+# k = 2 has the highest value, which means 2 clusters are the most optimal. ASW decreases as k-value increases 
+
+# the second method I will use is to calculate the Dunn index
+## the Dunn index assesses how compact and well-separated clusters are in cluster analysis
+### at first I tried to use the clValid Dunn function, but this took too much memory, so I had an LLM write a faster function for me that uses the same math
+fast_dunn <- function(x, cl_list, chunk = 500) {
+  x <- as.matrix(x)
+  sq <- rowSums(x^2)
+  within_max  <- rep(0, length(cl_list))
+  between_min <- rep(Inf, length(cl_list))
+  for (s in seq(1, nrow(x), by = chunk)) {
+    rows <- s:min(s + chunk - 1, nrow(x))
+    # distances from this chunk of cells to ALL cells
+    dmat <- sqrt(pmax(outer(sq[rows], sq, "+") - 2 * x[rows, , drop = FALSE] %*% t(x), 0))
+    for (j in seq_along(cl_list)) {
+      cl <- cl_list[[j]]
+      same <- outer(cl[rows], cl, "==")
+      within_max[j]  <- max(within_max[j],  max(dmat[same]))
+      between_min[j] <- min(between_min[j], min(dmat[!same]))
+    }
+  }
+  setNames(between_min / within_max, names(cl_list))
+}
+# printing out Dunn index values 
+km_cl_list <- lapply(all_kmeans, function(m) m$cluster)
+round(fast_dunn(static_microglia_pc1_3, km_cl_list), 4)
+# these values are VERY small, which is to because the minimum distance between clusters is very small 
+## I can still interpret them, but the differences between should be taken with a grain of salt, since they are also very slight/small
+### the Dunn index suggests that k = 2 is optimal and k = 4 is the next best option
 
 
 # ------------------------------------------------------------------------------
@@ -708,7 +737,6 @@ plot(k_values, dunn_values, type = "b", pch = 19,
 
 # wardD2 is a hierarchical clustering method suggested by Margo that works well with data that is tightly packed together 
 ## website that I referenced (URL): https://rstudio-pubs-static.s3.amazonaws.com/599072_93cf94954aa64fc7a4b99ca524e5371c.html#Hierarchical_clustering
-
 
 # I am going to be using wardD2 clustering from the fastcluster package, which will allow me to run the whole dataset on my computer 
 static_microglia_pc1_3_wardd2 <- hclust.vector(as.matrix(static_microglia_pc1_3), method = "ward") #in this package, the method ward = wardD2 
@@ -738,31 +766,89 @@ barplot(gaps$gap, names.arg = gaps$k,
 
 #### in this case, it is ___ clusters
 
-# I can also use the elbow method (same as for K-means)
-## I need to use the subsample here because my computer does not have enough memory
-fviz_nbclust(static_microglia_pc1_3[idx,], FUN = hcut, hc_method = "ward.D2",
-             hc_metric = "euclidean", method = "wss", k.max = 10) +
-             labs(subtitle = "Elbow Method")
-# this tells me that again, 2 clusters is optimal (when choosing between 2-6 clusters)
 
-# lastly, I will use the silhouette method again to determine optimal wardD2 cluster number 
-## I need to use the subsample here because my computer does not have enough memory
-fviz_nbclust(static_microglia_pc1_3_sub, FUN = hcut, hc_method = "ward.D2",
-             hc_metric = "euclidean", method = "silhouette", k.max = 10) +
-             labs(subtitle = "Silhouette Method")
-# this method also identifies 2 clusters as optimal 
+# now I am going to conduct average silhouette width analysis 
+## creating a list of wardD2 clustering outputs for k-values from 2-6 
+k_values2_6 <- 2:6
+ward_list <- lapply(k_values2_6, function(k) cutree(static_microglia_pc1_3_wardd2, k = k))
+names(ward_list) <- paste0("k", k_values2_6)
+# using the silhouette function to run analysis 
+sil_avg_wardD2 <- sapply(ward_list, function(cl) mean(silhouette(cl, static_microglia_pc1_3_dist)[, "sil_width"]))
+round(sil_avg, 3)
+# plotting average silhouette width for wardD2 clustering 
+sil_df_wardD2 <- data.frame(k = 2:6, sil = as.numeric(sil_avg_wardD2))
+best_k_wardD2 <- sil_df_wardD2$k[which.max(sil_df_wardD2$sil)] # adds line at the optimal k-value 
+# using ggplot to recreate the style of silhouette plots in fviz_nbclust for the above analysis 
+ggplot(sil_df_wardD2, aes(x = k, y = sil, group = 1)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "steelblue", size = 2) +
+  geom_vline(xintercept = best_k_wardD2, linetype = "dashed", color = "steelblue") +
+  scale_x_continuous(breaks = sil_df_wardD2$k) +
+  labs(title = "Optimal number of clusters (method = \"silhouette\")",
+       subtitle = "Silhouette Method",
+       x = "Number of clusters k",
+       y = "Average silhouette width") +
+  theme_classic()
+# based on this analysis, k = 2 is the best number of clusters, followed by k = 4 
 
-# ploting data in PCA space with 2 wardD2 clusters 
-static_microglia_non_red_w2 <- static_microglia_non_red
-static_microglia_non_red_w2$Cluster <- factor(static_microglia_kmeans_4$cluster)
+# I will also calculate the Dunn index for each number of wardD2 clusters 
+## here I am using the function created when calculating Dunn index for K-means clustering, but subbing in the wardD2 data
+ward_dunn <- fast_dunn(static_microglia_pc1_3, ward_list)
+round(ward_dunn, 4)
+# this analysis suggests that ____
+
+# after conducting the above analyses, I can conclude that k = 2 and k = 4 are the best k-values 
+## k = 2 is optimal, however, it likely has less biological relevance than k = 4 
+### to determine which is more relevant in terms of morphological features from my dataset, I am going to create heatmaps for clustering with both k-values and see which features contribute to them
+
+# starting with wardD2 clustering with k = 2 
+static_microglia_non_red_ward_k2 <- static_microglia_non_red
+static_microglia_non_red_ward_k2$Cluster <- factor(cutree(static_microglia_pc1_3_wardd2, k = 2))
+# parsing out the numeric columns (Cluster is a factor, so it is left out)
+static_microglia_non_red_ward_k2_num_cols <- static_microglia_non_red_ward_k2[sapply(static_microglia_non_red_ward_k2, is.numeric)]
+# averaging the (scaled) values of each variable within each cluster
+static_microglia_ward_cluster_means_k2 <- aggregate(static_microglia_non_red_ward_k2_num_cols,
+                                                 by = list(Cluster = static_microglia_non_red_ward_k2$Cluster),
+                                                 FUN = mean)
+static_microglia_ward_cluster_means_k2[-1] <- round(static_microglia_ward_cluster_means_k2[-1], 2)
+static_microglia_ward_cluster_means_k2
+# creating my heatmap
+library(pheatmap)
+pheatmap(t(static_microglia_ward_cluster_means_k2[, -1]),
+         labels_col = static_microglia_ward_cluster_means_k2$Cluster,
+         cluster_cols = FALSE, scale = "none")
+# for k = 2: 
+## cluster 1 cells have a smaller area and perimeter, fewer branches, a smaller radius, low circularity, low max branch length
+## cluster 2 cells have a larger area and perimeter, more branches, a larger radius, low circularity, relatively low max branch length
+### even though this k = 2 is the better cluster number via empirical methods, it makes less sense when looking at the implicated features 
+#### cluster 1 cells have low area and less branches that cluster 2, this likely puts cells that are more ameboid and rod-like in the same cluster (1)
+
+# moving on to wardD2 clustering with k = 4
+## making a copy of the df and adding the Ward cluster column 
+static_microglia_non_red_ward_k4 <- static_microglia_non_red
+static_microglia_non_red_ward_k4$Cluster <- factor(cutree(static_microglia_pc1_3_wardd2, k = 4))
+# parsing out the numeric columns 
+static_microglia_non_red_ward_k4_num_cols <- static_microglia_non_red_ward_k4[sapply(static_microglia_non_red_ward_k4, is.numeric)]
+# averaging the (scaled) values of each variable within each cluster
+static_microglia_ward_cluster_means_k4 <- aggregate(static_microglia_non_red_ward_k4_num_cols,
+                                                 by = list(Cluster = static_microglia_non_red_ward_k4$Cluster),
+                                                 FUN = mean)
+static_microglia_ward_cluster_means_k4[-1] <- round(static_microglia_ward_cluster_means_k4[-1], 2)
+static_microglia_ward_cluster_means_k4
+# creating the heatmap
+library(pheatmap)
+pheatmap(t(static_microglia_ward_cluster_means_k4[, -1]),
+         labels_col = static_microglia_ward_cluster_means_k4$Cluster,
+         cluster_cols = FALSE, scale = "none")
+# for k = 4: 
+## cluster 1: average area, perimeter, number of branches and circularity, low hull radius
+## cluster 2: small area, perimeter, few branches, highest circularity (of the 4), many hull pixels, low max branch length
+## cluster 3: high max branch length, ratio of hull axes and hull radius, low circularity and hull pixels 
+## cluster 4: large area, perimeter, many branches, low circularity, low mean branch length 
 
 
 
 
-# getting dendrogram heights
-
-
-# overlay of clusters on biplot
 
 
 # ------------------------------------------------------------------------------
