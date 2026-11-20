@@ -509,7 +509,7 @@ ggbiplot(static_microglia_non_red_pca,
 ## I will examine how similar each cluster is based on different variables 
 ### I will choose variables that have large loadings and correlate with a certain cluster 
 
-# calculating the pca loadings to have an empirical measure when choosing variabels 
+# calculating the pca loadings to have an empirical measure when choosing variables 
 pca_loadings <- static_microglia_non_red_pca$rotation %*% diag(static_microglia_non_red_pca$sdev)
 pca_loadings
 
@@ -840,25 +840,202 @@ library(pheatmap)
 pheatmap(t(static_microglia_ward_cluster_means_k4[, -1]),
          labels_col = static_microglia_ward_cluster_means_k4$Cluster,
          cluster_cols = FALSE, scale = "none")
-# for k = 4: 
-## cluster 1: average area, perimeter, number of branches and circularity, low hull radius
-## cluster 2: small area, perimeter, few branches, highest circularity (of the 4), many hull pixels, low max branch length
-## cluster 3: high max branch length, ratio of hull axes and hull radius, low circularity and hull pixels 
-## cluster 4: large area, perimeter, many branches, low circularity, low mean branch length 
+# based on the results of wardD2 clustering with k = 4, the following morphological groups emerge: 
+## cluster 1: average area, perimeter, number of branches, and circularity, low hull radius -> ameboid with branches/intermediate morphology
+## cluster 2: small area, perimeter, few branches, highest circularity (of the 4), many hull pixels, low max branch length -> ameboid cells
+## cluster 3: high max branch length, ratio of hull axes and hull radius, low circularity and hull pixels -> rod-like cells
+## cluster 4: large area, perimeter, many branches, low circularity, low mean branch length -> ramified cells 
 
+# plotting wardD2 clusters (k = 4) on biplot of PC1 and PC2
+ggbiplot(static_microglia_non_red_pca,
+         groups = static_microglia_non_red_ward_k4$Cluster,
+         #ellipse = TRUE,
+         var.axes = TRUE,
+         varname.size = 2,
+         varname.adjust = 2,
+         alpha = 0.4,
+         repel = TRUE, 
+         vector.args = list(linewidth = 0.3)) +
+  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen")) +
+  scale_fill_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen")) +
+  guides(shape = "none") +
+  theme_minimal() +
+  labs(title = "Biplot of PC1 and PC2",
+       color = "Cluster", fill = "Cluster") +
+  coord_fixed()
 
+# now I will perform statistical tests to evaluate the differences between clusters
+## I will examine how similar each cluster is based on different variables 
 
+# calculating the pca loadings to have an empirical measure when choosing variables 
+pca_loadings <- static_microglia_non_red_pca$rotation %*% diag(static_microglia_non_red_pca$sdev)
+pca_loadings
 
+## testing variable: HULL PIXELS - large loading magnitude, aligns with cluster 2
+# I am using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Hull.pixels ~ Cluster, data = static_microglia_non_red_ward_k4)
+# results: chi-squared = 18132, df = 3, p-value < 2.2e-16
+# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
+# post-hoc test: wilcox/mann-whitney u-test 
+pairwise.wilcox.test(static_microglia_non_red_ward_k4$Hull.pixels, 
+                     static_microglia_non_red_ward_k4$Cluster, 
+                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
+# results: p<2e-16 for each comparison of two clusters 
+# indicates that each cluster has significant differences in hull pixels
+
+## testing variable: MAX/MIN RATIO OF HULL AXES (measure of cell shape - circularity/length) - large loading magnitude, aligns with cluster 3
+# I am using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Max.min.hull.radius  ~ Cluster, data = static_microglia_non_red_ward_k4)
+# results: chi-squared = 10127, df = 3, p-value < 2.2e-16
+# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
+# post-hoc test: wilcox/mann-whitney u-test 
+pairwise.wilcox.test(static_microglia_non_red_ward_k4$Max.min.hull.radius, 
+                     static_microglia_non_red_ward_k4$Cluster, 
+                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
+# results: p<2e-16 for each comparison of two clusters 
+# indicates that each cluster has significant differences in cell max/min hull radius (measure of cell shape - circularity/length)
+
+## testing variable: FOREGROUND PIXELS - large loading magnitude, aligns with cluster 4
+# I am using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Foreground.pixels ~ Cluster, data = static_microglia_non_red_ward_k4)
+# results: chi-squared = 20892, df = 3, p-value < 2.2e-16
+# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
+# post-hoc test: wilcox/mann-whitney u-test 
+pairwise.wilcox.test(static_microglia_non_red_ward_k4$Foreground.pixels, 
+                     static_microglia_non_red_ward_k4$Cluster, 
+                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
+# results: p<2e-16 for each comparison of two clusters 
+# indicates that each cluster has significant differences in foreground pixels
+
+## testing variable: CIRCULARITY - large loading magnitude, aligns with cluster 1 AND 2 (on the border of the two clusters)
+### I had to use this loading for comparison because there is no loading that directly aligns with cluster 1 and this one is the best option
+# I am using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Circularity ~ Cluster, data = static_microglia_non_red_ward_k4)
+# results: chi-squared = 11905, df = 3, p-value < 2.2e-16
+# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
+# post-hoc test: wilcox/mann-whitney u-test 
+pairwise.wilcox.test(static_microglia_non_red_ward_k4$Circularity, 
+                     static_microglia_non_red_ward_k4$Cluster, 
+                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
+# results: p<2e-16 for each comparison of two clusters 
+# indicates that each cluster has significant differences in hull pixels
+
+# after using these statistical methods, I can be more certain that the clusters created by wardD2 clustering with k = 4 are separate and distinct based on certain key morphological features
 
 
 # ------------------------------------------------------------------------------
 # UMAP DIMENSIONALITY REDUCTION
 
-# this is another method of dimensionality reduction that I want to use 
+# UMAP (uniform manifold approximation and projection) is another method of dimensionality reduction that I will use to visualize and interpret my data
+## to familiarize myself with umap functions in R, I referenced this helpful website: https://www.datanovia.com/learn/machine-learning/dimension-reduction/umap
+
+# I will be using the umap function from the uwot package 
+umap_embedding <- umap(static_microglia_non_red[,-c(1:7)], n_neighbors = 50, min_dist = 0.1, n_components = 2)
+# storing the UMAP components in a dataframe along with categorical variables (sex and treatment)
+umap_df <- data.frame(
+  UMAP1   = umap_embedding[, 1],
+  UMAP2   = umap_embedding[, 2],
+  Sex = static_microglia_non_red$Sex, 
+  Treatment = static_microglia_non_red$Treatment)
+head(umap_df)
+
+# visualizing UMAP data using ggplot 
+## colouring points by treatment  
+ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = Treatment)) +
+  geom_point(alpha = 1, size = 1) +
+  scale_color_manual(values = c(CON = "#E69F00", COLD = "skyblue")) +
+  theme_minimal() +
+  labs(title = "UMAP Projection")
+## colouring points by sex  
+ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = Sex)) +
+  geom_point(alpha = 1, size = 1) +
+  scale_color_manual(values = c(F = "hotpink1", M = "steelblue1")) +
+  theme_minimal() +
+  labs(title = "UMAP Projection")
+# UMAP dimensionality reduction produces a much different spread of my data than PCA did (discrete clusters of points)
+## however, no obvious patterns/cluster differences emerge when overlaying plots with treatment or sex variables
+
+# plotting with cluster overlay from wardD2 k = 4 
+## creating new df with cluster column 
+umap_df_wardD2_k4 <- data.frame(
+  UMAP1   = umap_embedding[, 1],
+  UMAP2   = umap_embedding[, 2],
+  Sex = static_microglia_non_red$Sex, 
+  Treatment = static_microglia_non_red$Treatment,
+  Cluster = static_microglia_non_red_ward_k4$Cluster)
+## plotting UMAP with clusters overlaid
+ggplot(umap_df_wardD2_k4, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
+  geom_point(alpha = 1, size = 1) +
+  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen")) +
+  theme_minimal() +
+  labs(title = "UMAP Projectionx")
+
+# plotting with cluster overlay from k-means k = 4
+## creating new df with cluster column 
+umap_df_kmeans_k4 <- data.frame(
+  UMAP1   = umap_embedding[, 1],
+  UMAP2   = umap_embedding[, 2],
+  Sex = static_microglia_non_red$Sex, 
+  Treatment = static_microglia_non_red$Treatment,
+  Cluster = static_microglia_non_red_k4$Cluster)
+## plotting UMAP with clusters overlaid
+ggplot(umap_df_kmeans_k4, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
+  geom_point(alpha = 1, size = 1) +
+  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen")) +
+  theme_minimal() +
+  labs(title = "UMAP Projection")
 
 
 
 
+
+
+
+
+# testing 
+
+umap_df2 <- umap_df[sample(nrow(umap_df)), ]   # shuffle so no cluster is drawn last
+
+ggplot(umap_df2, aes(UMAP1, UMAP2, color = Cluster)) +
+  geom_point(alpha = 0.3, size = 0.5) +
+  facet_wrap(~Cluster) +
+  theme_minimal()
+
+umap_df$Area <- static_microglia_non_red$Area
+ggplot(umap_df, aes(UMAP1, UMAP2, color = Area)) +
+  geom_point(size = 0.5) +
+  scale_color_viridis_c() +
+  theme_minimal()
+
+umap_df$Branches <- static_microglia_non_red$Branches
+ggplot(umap_df, aes(UMAP1, UMAP2, color = Branches)) +
+  geom_point(size = 0.5) +
+  scale_color_viridis_c() +
+  theme_minimal()
+
+umap_df$Circularity <- static_microglia_non_red$Circularity
+ggplot(umap_df, aes(UMAP1, UMAP2, color = Circularity)) +
+  geom_point(size = 0.5) +
+  scale_color_viridis_c() +
+  theme_minimal()
+
+morph_data <- static_microglia_non_red[, -c(1:7)]
+
+island <- umap_embedding[, 1] < -5 & umap_embedding[, 2] > 0
+
+sort(round(colMeans(morph_data[island, ]) - colMeans(morph_data[!island, ]), 2))
+
+table(round(morph_data$Branches[island], 2))
+
+km_umap <- kmeans(umap_embedding, centers = 4, nstart = 25, iter.max = 100)
+
+library(fastcluster)
+ward_umap <- hclust.vector(umap_embedding, method = "ward")
+ward_umap_k4 <- cutree(ward_umap, k = 4)
+
+# how well do the UMAP clusters match your PC-based Ward clusters?
+table(PC_Ward = static_microglia_non_red_ward_k4$Cluster, UMAP_KMeans = km_umap$cluster)
+table(PC_Ward = static_microglia_non_red_ward_k4$Cluster, UMAP_Ward = ward_umap_k4)
 
 
 # ------------------------------------------------------------------------------
