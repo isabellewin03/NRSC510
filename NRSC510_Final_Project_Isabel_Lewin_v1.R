@@ -1004,62 +1004,10 @@ ggplot(umap_df_kmeans_k4, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
   theme_minimal() +
   labs(title = "UMAP Projection")
 
-
-
-
-
-
-
-
-# testing 
-
-umap_df2 <- umap_df[sample(nrow(umap_df)), ]   # shuffle so no cluster is drawn last
-
-ggplot(umap_df2, aes(UMAP1, UMAP2, color = Cluster)) +
-  geom_point(alpha = 0.3, size = 0.5) +
-  facet_wrap(~Cluster) +
-  theme_minimal()
-
-umap_df$Area <- static_microglia_non_red$Area
-ggplot(umap_df, aes(UMAP1, UMAP2, color = Area)) +
-  geom_point(size = 0.5) +
-  scale_color_viridis_c() +
-  theme_minimal()
-
-umap_df$Branches <- static_microglia_non_red$Branches
-ggplot(umap_df, aes(UMAP1, UMAP2, color = Branches)) +
-  geom_point(size = 0.5) +
-  scale_color_viridis_c() +
-  theme_minimal()
-
-umap_df$Circularity <- static_microglia_non_red$Circularity
-ggplot(umap_df, aes(UMAP1, UMAP2, color = Circularity)) +
-  geom_point(size = 0.5) +
-  scale_color_viridis_c() +
-  theme_minimal()
-
-morph_data <- static_microglia_non_red[, -c(1:7)]
-
-island <- umap_embedding[, 1] < -5 & umap_embedding[, 2] > 0
-
-sort(round(colMeans(morph_data[island, ]) - colMeans(morph_data[!island, ]), 2))
-
-table(round(morph_data$Branches[island], 2))
-
-km_umap <- kmeans(umap_embedding, centers = 4, nstart = 25, iter.max = 100)
-
-library(fastcluster)
-ward_umap <- hclust.vector(umap_embedding, method = "ward")
-ward_umap_k4 <- cutree(ward_umap, k = 4)
-
-# how well do the UMAP clusters match your PC-based Ward clusters?
-table(PC_Ward = static_microglia_non_red_ward_k4$Cluster, UMAP_KMeans = km_umap$cluster)
-table(PC_Ward = static_microglia_non_red_ward_k4$Cluster, UMAP_Ward = ward_umap_k4)
-
+# my UMAP cluster overlay looks very odd and many of the clusters are chopped up
+## my next step is to conduct UMAP and all clustering on PCs 1-4 to see if incorporating more PCs helps with this issue
+### I will do this in a second version of my script file (available on GitHub)
 
 # ------------------------------------------------------------------------------
 
-
-# from margo to extend running memory:
-#options(future.globals.maxSize = 200000 * 1024^2)
 
