@@ -1,4 +1,5 @@
 # NRSC510 final project in R 
+## script version 2
 
 # NRSC510 class project 
 ## Isabel Lewin 
