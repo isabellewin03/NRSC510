@@ -83,6 +83,7 @@ static_microglia_filtered <- static_microglia[,-35]%>%
 
 # checking to make sure indexing and filtering step worked
 glimpse(static_microglia_filtered) 
+View(static_microglia_filtered)
 # these steps worked! number of columns reduced by 1, rows reduced by ~2000
 
 # ------------------------------------------------------------------------------
@@ -236,9 +237,6 @@ fig <- fig %>% layout(
 
 fig
 
-# if i want to save this as an html file, i can use this code
-## library(htmlwidgets)
-## saveWidget(fig, "pca_3d.html", selfcontained = TRUE)
 
 # ------------------------------------------------------------------------------
 # PROCESSING MY DATA MORE TO REMOVE REDUNDANT VARIABLES 
@@ -286,15 +284,19 @@ split(names(groups), groups)
 ### from group '5', I will keep both "Area" and "Number.of.slab.voxels", because they are not redundant measurements
 #### from group '12', I will keep "Number.of.branches" and "Number.of.triple.points" remove "Number.of.junctions" and "Number.of.junction.voxels", which are very similar measurements to "Number.of.branches" 
 
-# this brings my total number of (numeric) variables from 27 to __
+# NOTE: after running this entire pipeline once, I came back to this step and also decided to remove 'Quad.pts'
+## this is a very rare variable and ended up skewing my UMAP plot so I chose to remove it entirely (full explanation at the end of script v2)
+
+# this brings my total number of (numeric) variables from 27 to 20
 keep <- c("BrainRegion", "MouseID", "Treatment", "Sex", "SlideNumber", "ID", "UniqueID", 
           "Foreground.pixels", "Hull.pixels", "Ratio.hull.axes", "Circularity", "Perimeter",
           "Mean.radius", "Mean.circle.radius", "Area", "Slab.vox",
           "Width.bound.rect", "Ht.bound.rect", "Max.min.hull.radius", 
           "CV.hull.radius", "Max.min.circle.radius",
           "CV.circle.radius", "Branches", "Triple.pts", "End.pt.vox", 
-          "Mean.branch.length", "Quad.pts", "Max.branch.length") 
-# creating a new dataframe that only keeps the above 18 numeric variables 
+          "Mean.branch.length", "Max.branch.length") 
+
+# creating a new dataframe that only keeps the above 20 numeric variables 
 static_microglia_non_red  <- static_microglia_filtered[keep]
 
 # checking to make sure the data were processed correctly 
