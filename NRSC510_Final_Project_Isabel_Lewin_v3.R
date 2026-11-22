@@ -1,4 +1,5 @@
 # NRSC510 final project in R 
+## file version 3
 
 # NRSC510 class project 
 ## Isabel Lewin 
@@ -1030,4 +1031,3 @@ ggplot(df_noquad, aes(UMAP1, UMAP2, color = Cluster)) +
 #### I will do this in a duplicated script (available on GitHub)
 
 # ------------------------------------------------------------------------------
-

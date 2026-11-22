@@ -1,4 +1,5 @@
 # NRSC510 final project in R 
+# script version 1
 
 # NRSC510 class project 
 ## Isabel Lewin 
@@ -392,6 +393,10 @@ library(plotly)
 # identifying the scores for the first 3 PCs, plus the grouping variable (treatment)
 scores_non_red <- as.data.frame(static_microglia_non_red_pca$x[, 1:3])
 scores_non_red$Treatment <- static_microglia_filtered$Treatment
+
+# also saving the first 3 PC scores as a separate data frame for downstream clustering and analysis
+static_microglia_pc1_3 <- as.data.frame(static_microglia_non_red_pca$x[, 1:3])
+View(static_microglia_pc1_3)
 
 # generating the variance explained, for the axis labels
 ve <- round(summary(static_microglia_non_red_pca)$importance[2, ] * 100, 1)
@@ -929,8 +934,22 @@ pairwise.wilcox.test(static_microglia_non_red_ward_k4$Circularity,
 # UMAP (uniform manifold approximation and projection) is another method of dimensionality reduction that I will use to visualize and interpret my data
 ## to familiarize myself with umap functions in R, I referenced this helpful website: https://www.datanovia.com/learn/machine-learning/dimension-reduction/umap
 
+
+#test 
+set.seed(9)
 # I will be using the umap function from the uwot package 
-umap_embedding <- umap(static_microglia_non_red[,-c(1:7)], n_neighbors = 50, min_dist = 0.1, n_components = 2)
+umap_embedding <- umap(static_microglia_pc1_3, n_neighbors = 30, min_dist = 0.1, n_components = 2)
+# storing the UMAP components in a dataframe along with categorical variables (sex and treatment)
+umap_df <- data.frame(
+  UMAP1   = umap_embedding[, 1],
+  UMAP2   = umap_embedding[, 2],
+  Sex = static_microglia_non_red$Sex, 
+  Treatment = static_microglia_non_red$Treatment)
+head(umap_df)
+
+
+# I will be using the umap function from the uwot package 
+umap_embedding <- umap(static_microglia_non_red[,-c(1:7)], n_neighbors = 30, min_dist = 0.1, n_components = 2)
 # storing the UMAP components in a dataframe along with categorical variables (sex and treatment)
 umap_df <- data.frame(
   UMAP1   = umap_embedding[, 1],
@@ -1043,3 +1062,4 @@ table(PC_Ward = static_microglia_non_red_ward_k4$Cluster, UMAP_Ward = ward_umap_
 
 # from margo to extend running memory:
 #options(future.globals.maxSize = 200000 * 1024^2)
+

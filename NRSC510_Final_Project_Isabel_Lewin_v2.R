@@ -1,4 +1,5 @@
 # NRSC510 final project in R 
+## script version 2
 
 # NRSC510 class project 
 ## Isabel Lewin 
@@ -16,6 +17,7 @@
 # loading packages that I will use for this project
 library(vroom)
 library(dplyr)
+library(tidyr)
 library(ggplot2)
 library(ggbiplot)
 library(factoextra)
@@ -23,6 +25,10 @@ library(MASS)
 library(cluster) 
 library(fastcluster)
 library(uwot)
+
+# to set memory limit required for this script file to run, paste this into console:
+## mem.maxVSize(25000) 
+### sets memory limit to 25 gigabytes
 
 # ------------------------------------------------------------------------------
 # DATA CLEANING AND SET-UP
@@ -394,8 +400,8 @@ scores_non_red <- as.data.frame(static_microglia_non_red_pca$x[, 1:3])
 scores_non_red$Treatment <- static_microglia_filtered$Treatment
 
 # also saving the first 3 PC scores as a separate data frame for downstream clustering and analysis
-static_microglia_pc1_3 <- as.data.frame(static_microglia_non_red_pca$x[, 1:3])
-View(static_microglia_pc1_3)
+static_microglia_pc1_4 <- as.data.frame(static_microglia_non_red_pca$x[, 1:3])
+View(static_microglia_pc1_4)
 
 # generating the variance explained, for the axis labels
 ve <- round(summary(static_microglia_non_red_pca)$importance[2, ] * 100, 1)
@@ -422,25 +428,29 @@ fig_non_red
 # ------------------------------------------------------------------------------
 # CONDUCTING K-MEANS CLUSTERING 
 
-# I am going to keep PCs 1-3 for this analysis, as they represent the majority of the variance 
+# I am going to keep PCs 1-4 for this analysis, as they represent the majority of the variance (erring on the cautious side by adding PC4)
 
 # setting the seed to keep my results reproducible each time I run the code 
 set.seed(123) # I need to do this because I will be taking random subsamples 
 
 # determining the optimal number of clusters
 
+# creating a df of the first 4 PC scores
+static_microglia_pc1_4 <- as.data.frame(static_microglia_non_red_pca$x[, 1:4])
+View(static_microglia_pc1_4)
+
 # first I am going to use the elbow method  
 ### here I am taking a random subsample of 10k cells from my dataset to run this on because my computer does not have enough memory to run on the whole dataset
-static_microglia_subsample <- sample(nrow(static_microglia_pc1_3), 
-                                     min(10000, nrow(static_microglia_pc1_3)), 
+static_microglia_subsample <- sample(nrow(static_microglia_pc1_4), 
+                                     min(10000, nrow(static_microglia_pc1_4)), 
                                      replace = FALSE)
-fviz_nbclust(static_microglia_pc1_3[static_microglia_subsample,], FUNcluster = kmeans, 
+fviz_nbclust(static_microglia_pc1_4[static_microglia_subsample,], FUNcluster = kmeans, 
              method = "wss", k.max = 10, nstart = 25, iter.max = 200) +
              labs(subtitle = "Elbow Method")
-# this method suggests that either k = 2 or k = 4 is optimal (those are where slight plateaus occur)
+# this method suggests that either k = 4 or 5 is optimal (this is where a slight plateau occurs)
 
 # now I am going to use the silhouette method 
-fviz_nbclust(static_microglia_pc1_3[static_microglia_subsample, ], kmeans, 
+fviz_nbclust(static_microglia_pc1_4[static_microglia_subsample, ], kmeans, 
              method = "silhouette", k.max = 10, nstart = 25, iter.max = 200) +
              labs(subtitle = "Silhouette Method")
 # this method suggests that k = 2 is optimal 
@@ -451,13 +461,13 @@ fviz_nbclust(static_microglia_pc1_3[static_microglia_subsample, ], kmeans,
 
 # setting k = 3 to start 
 ## running kmeans() on my entire dataset of PC1-PC3
-static_microglia_kmeans_3 <- kmeans(static_microglia_pc1_3, centers = 3, nstart = 25)
+static_microglia_kmeans_3 <- kmeans(static_microglia_pc1_4, centers = 3, nstart = 25)
 ## printing out the values obtained from this computation 
 ### size = number of cells per cluster
 str(static_microglia_kmeans_3)
 
 # visualizing clusters using fviz_cluster()
-fviz_cluster(static_microglia_kmeans_3, data = static_microglia_pc1_3)
+fviz_cluster(static_microglia_kmeans_3, data = static_microglia_pc1_4)
 
 # calculating the averages of each variable by cluster to try to interpret what each cluster means 
 ## creating a copy of my df and adding k=3 cluster column 
@@ -560,8 +570,8 @@ pairwise.wilcox.test(static_microglia_non_red_k3$Circularity,
 # CONDUCTING K-MEANS CLUSTERING (k = 4, 5, 6, and 2)
 
 # setting k = 4
-static_microglia_kmeans_4 <- kmeans(static_microglia_pc1_3, centers = 4, nstart = 25)
-fviz_cluster(static_microglia_kmeans_4, data = static_microglia_pc1_3)
+static_microglia_kmeans_4 <- kmeans(static_microglia_pc1_4, centers = 4, nstart = 25)
+fviz_cluster(static_microglia_kmeans_4, data = static_microglia_pc1_4)
 # creating new df with added cluster column 
 static_microglia_non_red_k4 <- static_microglia_non_red
 static_microglia_non_red_k4$Cluster <- factor(static_microglia_kmeans_4$cluster)
@@ -585,8 +595,8 @@ ggbiplot(static_microglia_non_red_pca,
 
 
 # setting k = 5 
-static_microglia_kmeans_5 <- kmeans(static_microglia_pc1_3, centers = 5, nstart = 25)
-fviz_cluster(static_microglia_kmeans_5, data = static_microglia_pc1_3)
+static_microglia_kmeans_5 <- kmeans(static_microglia_pc1_4, centers = 5, nstart = 25)
+fviz_cluster(static_microglia_kmeans_5, data = static_microglia_pc1_4)
 # creating new df with added cluster column 
 static_microglia_non_red_k5 <- static_microglia_non_red
 static_microglia_non_red_k5$Cluster <- factor(static_microglia_kmeans_5$cluster)
@@ -609,8 +619,8 @@ ggbiplot(static_microglia_non_red_pca,
   coord_fixed()
 
 # setting k = 6
-static_microglia_kmeans_6 <- kmeans(static_microglia_pc1_3, centers = 6, nstart = 25)
-fviz_cluster(static_microglia_kmeans_6, data = static_microglia_pc1_3)
+static_microglia_kmeans_6 <- kmeans(static_microglia_pc1_4, centers = 6, nstart = 25)
+fviz_cluster(static_microglia_kmeans_6, data = static_microglia_pc1_4)
 # creating new df with added cluster column 
 static_microglia_non_red_k6 <- static_microglia_non_red
 static_microglia_non_red_k6$Cluster <- factor(static_microglia_kmeans_6$cluster)
@@ -633,8 +643,8 @@ ggbiplot(static_microglia_non_red_pca,
   coord_fixed()
 
 # setting k = 2
-static_microglia_kmeans_2 <- kmeans(static_microglia_pc1_3, centers = 2, nstart = 25)
-fviz_cluster(static_microglia_kmeans_2, data = static_microglia_pc1_3)
+static_microglia_kmeans_2 <- kmeans(static_microglia_pc1_4, centers = 2, nstart = 25)
+fviz_cluster(static_microglia_kmeans_2, data = static_microglia_pc1_4)
 # creating new df with added cluster column 
 static_microglia_non_red_k2 <- static_microglia_non_red
 static_microglia_non_red_k2$Cluster <- factor(static_microglia_kmeans_2$cluster)
@@ -667,9 +677,9 @@ all_kmeans <- list(k2 = static_microglia_kmeans_2, k3 = static_microglia_kmeans_
                 k4 = static_microglia_kmeans_4, k5 = static_microglia_kmeans_5,
                 k6 = static_microglia_kmeans_6)
 # now I am going to calculate the average silhouette widths (ASW) for each k-value 
-static_microglia_pc1_3_dist <- dist(static_microglia_pc1_3)   # distances between ALL cells
+static_microglia_pc1_4_dist <- dist(static_microglia_pc1_4)   # distances between ALL cells
 sil_avg <- sapply(all_kmeans, function(m) {
-  silhouette_width <- silhouette(m$cluster, static_microglia_pc1_3_dist) # this calculates the AWS
+  silhouette_width <- silhouette(m$cluster, static_microglia_pc1_4_dist) # this calculates the AWS
   mean(silhouette_width[, "sil_width"])
 })
 round(sil_avg, 3)
@@ -682,7 +692,7 @@ round(sil_avg, 3)
   # I need to use a subsample because my dataset is too large to run the analysis on all of my cells  
 #  cluster_subsample <- unlist(lapply(split(seq_along(m$cluster), m$cluster),
 #                                     function(i) i[sample.int(length(i), min(5000, length(i)))]))
-#  d <- dist(static_microglia_pc1_3[cluster_subsample, ])
+#  d <- dist(static_microglia_pc1_4[cluster_subsample, ])
 #  s <- silhouette(m$cluster[cluster_subsample], d)
 #  mean(s[, "sil_width"])
 #})
@@ -727,11 +737,10 @@ fast_dunn <- function(x, cl_list, chunk = 500) {
 }
 # printing out Dunn index values 
 km_cl_list <- lapply(all_kmeans, function(m) m$cluster)
-round(fast_dunn(static_microglia_pc1_3, km_cl_list), 4)
+round(fast_dunn(static_microglia_pc1_4, km_cl_list), 4)
 # these values are VERY small, which is to because the minimum distance between clusters is very small 
 ## I can still interpret them, but the differences between should be taken with a grain of salt, since they are also very slight/small
-### the Dunn index suggests that k = 2 is optimal and k = 4 is the next best option
-
+### the Dunn index suggests that k = 3 is optimal, followed by k = 2 
 
 # ------------------------------------------------------------------------------
 # CONDUCTING WARDD2 CLUSTERING 
@@ -743,41 +752,24 @@ round(fast_dunn(static_microglia_pc1_3, km_cl_list), 4)
 ## website that I referenced (URL): https://rstudio-pubs-static.s3.amazonaws.com/599072_93cf94954aa64fc7a4b99ca524e5371c.html#Hierarchical_clustering
 
 # I am going to be using wardD2 clustering from the fastcluster package, which will allow me to run the whole dataset on my computer 
-static_microglia_pc1_3_wardd2 <- hclust.vector(as.matrix(static_microglia_pc1_3), method = "ward") #in this package, the method ward = wardD2 
+static_microglia_pc1_4_wardd2 <- hclust.vector(as.matrix(static_microglia_pc1_4), method = "ward") #in this package, the method ward = wardD2 
 
 # creating a dendrogram to represent the clustering data
-plot(static_microglia_pc1_3_wardd2, cex = 0.4, labels = FALSE)
+plot(static_microglia_pc1_4_wardd2, cex = 0.4, labels = FALSE)
 
 # now I need to determine the optimal number of clusters from wardD2 clustering 
 ## I will first use the 'vertical distance method'
 ### in this method, you identify the longest vertical line that isn't intersected by horizontal lines and the number of vertical lines parallel to it is the number of clusters 
-
-# printing out the 
-dendrogram_heights <- sort(static_microglia_pc1_3_wardd2$height, decreasing = TRUE)[1:10]
-
-dendrogram_heights
-# length of the vertical line that corresponds to each number of clusters k
-gaps <- data.frame(k = 2:10,
-                   gap = dendrogram_heights[-length(dendrogram_heights)] - dendrogram_heights[-1])
-gaps
-
-View(gaps)
-# k with the longest vertical line
-gaps$k[which.max(gaps$gap)]
-
-barplot(gaps$gap, names.arg = gaps$k,
-        xlab = "Number of clusters k", ylab = "Length of vertical line (height gap)")
-
-#### in this case, it is ___ clusters
-
+#### this method is typically done qualitatively (by looking at the dendrogram)
+##### from this method, I can identify k = 2 and k = 4 as the optimal number of clusters
 
 # now I am going to conduct average silhouette width analysis 
 ## creating a list of wardD2 clustering outputs for k-values from 2-6 
 k_values2_6 <- 2:6
-ward_list <- lapply(k_values2_6, function(k) cutree(static_microglia_pc1_3_wardd2, k = k))
+ward_list <- lapply(k_values2_6, function(k) cutree(static_microglia_pc1_4_wardd2, k = k))
 names(ward_list) <- paste0("k", k_values2_6)
 # using the silhouette function to run analysis 
-sil_avg_wardD2 <- sapply(ward_list, function(cl) mean(silhouette(cl, static_microglia_pc1_3_dist)[, "sil_width"]))
+sil_avg_wardD2 <- sapply(ward_list, function(cl) mean(silhouette(cl, static_microglia_pc1_4_dist)[, "sil_width"]))
 round(sil_avg, 3)
 # plotting average silhouette width for wardD2 clustering 
 sil_df_wardD2 <- data.frame(k = 2:6, sil = as.numeric(sil_avg_wardD2))
@@ -793,13 +785,13 @@ ggplot(sil_df_wardD2, aes(x = k, y = sil, group = 1)) +
        x = "Number of clusters k",
        y = "Average silhouette width") +
   theme_classic()
-# based on this analysis, k = 2 is the best number of clusters, followed by k = 4 
+# based on this analysis, k = 2 is the optimal number of clusters, followed by k = 3
 
 # I will also calculate the Dunn index for each number of wardD2 clusters 
 ## here I am using the function created when calculating Dunn index for K-means clustering, but subbing in the wardD2 data
-ward_dunn <- fast_dunn(static_microglia_pc1_3, ward_list)
+ward_dunn <- fast_dunn(static_microglia_pc1_4, ward_list)
 round(ward_dunn, 4)
-# this analysis suggests that ____
+# this analysis suggests that k = 2 is the optimal number of clusters, followed by k = 3
 
 # after conducting the above analyses, I can conclude that k = 2 and k = 4 are the best k-values 
 ## k = 2 is optimal, however, it likely has less biological relevance than k = 4 
@@ -807,7 +799,7 @@ round(ward_dunn, 4)
 
 # starting with wardD2 clustering with k = 2 
 static_microglia_non_red_ward_k2 <- static_microglia_non_red
-static_microglia_non_red_ward_k2$Cluster <- factor(cutree(static_microglia_pc1_3_wardd2, k = 2))
+static_microglia_non_red_ward_k2$Cluster <- factor(cutree(static_microglia_pc1_4_wardd2, k = 2))
 # parsing out the numeric columns (Cluster is a factor, so it is left out)
 static_microglia_non_red_ward_k2_num_cols <- static_microglia_non_red_ward_k2[sapply(static_microglia_non_red_ward_k2, is.numeric)]
 # averaging the (scaled) values of each variable within each cluster
@@ -830,7 +822,7 @@ pheatmap(t(static_microglia_ward_cluster_means_k2[, -1]),
 # moving on to wardD2 clustering with k = 4
 ## making a copy of the df and adding the Ward cluster column 
 static_microglia_non_red_ward_k4 <- static_microglia_non_red
-static_microglia_non_red_ward_k4$Cluster <- factor(cutree(static_microglia_pc1_3_wardd2, k = 4))
+static_microglia_non_red_ward_k4$Cluster <- factor(cutree(static_microglia_pc1_4_wardd2, k = 4))
 # parsing out the numeric columns 
 static_microglia_non_red_ward_k4_num_cols <- static_microglia_non_red_ward_k4[sapply(static_microglia_non_red_ward_k4, is.numeric)]
 # averaging the (scaled) values of each variable within each cluster
@@ -847,7 +839,7 @@ pheatmap(t(static_microglia_ward_cluster_means_k4[, -1]),
 # based on the results of wardD2 clustering with k = 4, the following morphological groups emerge: 
 ## cluster 1: average area, perimeter, number of branches, and circularity, low hull radius -> ameboid with branches/intermediate morphology
 ## cluster 2: small area, perimeter, few branches, highest circularity (of the 4), many hull pixels, low max branch length -> ameboid cells
-## cluster 3: high max branch length, ratio of hull axes and hull radius, low circularity and hull pixels -> rod-like cells
+## cluster 3: high ratio of hull axes and hull radius, low circularity and hull pixels -> rod-like cells
 ## cluster 4: large area, perimeter, many branches, low circularity, low mean branch length -> ramified cells 
 
 # plotting wardD2 clusters (k = 4) on biplot of PC1 and PC2
@@ -933,11 +925,12 @@ pairwise.wilcox.test(static_microglia_non_red_ward_k4$Circularity,
 # UMAP (uniform manifold approximation and projection) is another method of dimensionality reduction that I will use to visualize and interpret my data
 ## to familiarize myself with umap functions in R, I referenced this helpful website: https://www.datanovia.com/learn/machine-learning/dimension-reduction/umap
 
-
-#test 
-set.seed(9)
+set.seed(456)
 # I will be using the umap function from the uwot package 
-umap_embedding <- umap(static_microglia_pc1_3, n_neighbors = 30, min_dist = 0.1, n_components = 2)
+umap_embedding <- umap(static_microglia_pc1_4, n_neighbors = 30, min_dist = 0.1, n_components = 2)
+View(umap_embedding)
+
+#####umap_embedding <- umap(static_microglia_non_red[,-c(1:7)], n_neighbors = 50, min_dist = 0.1, n_components = 2)
 # storing the UMAP components in a dataframe along with categorical variables (sex and treatment)
 umap_df <- data.frame(
   UMAP1   = umap_embedding[, 1],
@@ -946,16 +939,6 @@ umap_df <- data.frame(
   Treatment = static_microglia_non_red$Treatment)
 head(umap_df)
 
-
-# I will be using the umap function from the uwot package 
-umap_embedding <- umap(static_microglia_non_red[,-c(1:7)], n_neighbors = 30, min_dist = 0.1, n_components = 2)
-# storing the UMAP components in a dataframe along with categorical variables (sex and treatment)
-umap_df <- data.frame(
-  UMAP1   = umap_embedding[, 1],
-  UMAP2   = umap_embedding[, 2],
-  Sex = static_microglia_non_red$Sex, 
-  Treatment = static_microglia_non_red$Treatment)
-head(umap_df)
 
 # visualizing UMAP data using ggplot 
 ## colouring points by treatment  
@@ -1003,62 +986,49 @@ ggplot(umap_df_kmeans_k4, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
   theme_minimal() +
   labs(title = "UMAP Projection")
 
+# after doing all this, my UMAP plots with ward and k-means clustering look odd: the clusters are 'chopped up' through the umap distribution
+## I am going to investigate why this might be happening:
 
-
-
-
-
-
-
-# testing 
-
-umap_df2 <- umap_df[sample(nrow(umap_df)), ]   # shuffle so no cluster is drawn last
-
-ggplot(umap_df2, aes(UMAP1, UMAP2, color = Cluster)) +
-  geom_point(alpha = 0.3, size = 0.5) +
-  facet_wrap(~Cluster) +
+# checking how each variable correlates to various areas of the UMAP plot
+morph_data <- static_microglia_non_red[, -c(1:7)]  # numeric variables only 
+s <- sample(nrow(morph_data), 10000)   # doing a subsample because it keeps the plotting fast
+# I am going to create plots of each variable overlaid on a separate UMAP plot 
+plot_df <- data.frame(UMAP1 = umap_embedding[s, 1],
+                      UMAP2 = umap_embedding[s, 2],
+                      morph_data[s, ], check.names = FALSE)
+plot_long <- pivot_longer(plot_df, cols = -c(UMAP1, UMAP2),
+                          names_to = "Variable", values_to = "Value")
+# plotting with ggplot 
+ggplot(plot_long, aes(UMAP1, UMAP2, color = Value)) +
+  geom_point(size = 0.2) +
+  scale_color_viridis_c(limits = c(-2, 2), oob = scales::squish) +
+  facet_wrap(~Variable) +
   theme_minimal()
 
-umap_df$Area <- static_microglia_non_red$Area
-ggplot(umap_df, aes(UMAP1, UMAP2, color = Area)) +
-  geom_point(size = 0.5) +
-  scale_color_viridis_c() +
+# all of the variables look normal EXCEPT quadruple points (Quad.pts), which is mostly binary in colour and lays on the 'tail towards the left of the plot'
+## this is a very rare count (few cells have points with 4+ junctions), so most of the cells sit at 0 and some have 1+ quad points 
+### I wonder if this variable might be responsible (or at least partially responsible) for skewing my data 
+
+# more investigation:
+## I am quickly going to re-run pca (just a fast test) to see if that changes the layout in UMAP
+vars <- static_microglia_non_red[, -c(1:7)]
+vars_noquad <- vars[, names(vars) != "Quad.pts"]
+# re-doing PCA 
+pca_noquad <- prcomp(vars_noquad)   # used the same prcomp arguments as my original PCA
+# re-doing UMAP
+umap_noquad <- umap(pca_noquad$x[, 1:4], n_neighbors = 10, min_dist = 0.1, n_components = 2)
+df_noquad <- data.frame(UMAP1 = umap_noquad[, 1], UMAP2 = umap_noquad[, 2],
+                        Cluster = static_microglia_non_red_ward_k4$Cluster)
+df_noquad <- df_noquad[sample(nrow(df_noquad)), ]
+# plotting quickly 
+ggplot(df_noquad, aes(UMAP1, UMAP2, color = Cluster)) +
+  geom_point(size = 0.4, alpha = 0.5) +
   theme_minimal()
 
-umap_df$Branches <- static_microglia_non_red$Branches
-ggplot(umap_df, aes(UMAP1, UMAP2, color = Branches)) +
-  geom_point(size = 0.5) +
-  scale_color_viridis_c() +
-  theme_minimal()
-
-umap_df$Circularity <- static_microglia_non_red$Circularity
-ggplot(umap_df, aes(UMAP1, UMAP2, color = Circularity)) +
-  geom_point(size = 0.5) +
-  scale_color_viridis_c() +
-  theme_minimal()
-
-morph_data <- static_microglia_non_red[, -c(1:7)]
-
-island <- umap_embedding[, 1] < -5 & umap_embedding[, 2] > 0
-
-sort(round(colMeans(morph_data[island, ]) - colMeans(morph_data[!island, ]), 2))
-
-table(round(morph_data$Branches[island], 2))
-
-km_umap <- kmeans(umap_embedding, centers = 4, nstart = 25, iter.max = 100)
-
-library(fastcluster)
-ward_umap <- hclust.vector(umap_embedding, method = "ward")
-ward_umap_k4 <- cutree(ward_umap, k = 4)
-
-# how well do the UMAP clusters match your PC-based Ward clusters?
-table(PC_Ward = static_microglia_non_red_ward_k4$Cluster, UMAP_KMeans = km_umap$cluster)
-table(PC_Ward = static_microglia_non_red_ward_k4$Cluster, UMAP_Ward = ward_umap_k4)
-
+# this UMAP looks much better! 
+## I hypothesize that Quad.pts was skewing my data 
+### because of this, I am going to rerun this entire pipeline (start to finish -> PCA, clustering and UMAP) and see how that changes the distribution, visualization and clustering
+#### I will do this in a duplicated script (available on GitHub)
 
 # ------------------------------------------------------------------------------
-
-
-# from margo to extend running memory:
-#options(future.globals.maxSize = 200000 * 1024^2)
 
