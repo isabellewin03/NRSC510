@@ -400,7 +400,7 @@ scores_non_red <- as.data.frame(static_microglia_non_red_pca$x[, 1:3])
 scores_non_red$Treatment <- static_microglia_filtered$Treatment
 
 # also saving the first 3 PC scores as a separate data frame for downstream clustering and analysis
-static_microglia_pc1_4 <- as.data.frame(static_microglia_non_red_pca$x[, 1:3])
+static_microglia_pc1_4 <- as.data.frame(static_microglia_non_red_pca$x[, 1:4])
 View(static_microglia_pc1_4)
 
 # generating the variance explained, for the axis labels

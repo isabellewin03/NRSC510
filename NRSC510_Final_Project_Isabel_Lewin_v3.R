@@ -22,8 +22,11 @@ library(ggplot2)
 library(ggbiplot)
 library(factoextra)
 library(MASS)
+library(plotly)
+library(corrplot)
 library(cluster) 
 library(fastcluster)
+library(pheatmap)
 library(uwot)
 
 # to set memory limit required for this script file to run, paste this into console:
@@ -208,7 +211,6 @@ fviz_pca_var(static_microglia_pca, col.var = "contrib",
 
 # now I can also create a 3D scatterplot to look at the spread of PCs 1-3
 ## i will do this using the plotly package 
-library(plotly)
 
 # identifying the scores for the first 3 PCs, plus the grouping variable (treatment)
 scores <- as.data.frame(static_microglia_pca$x[, 1:3])
@@ -245,7 +247,6 @@ fig
 # now I am going to remove any redundant variables and examine the resulting PCA to see if this can help clarify the analysis
 
 ## first, I am going to check variable correlation empirically using cor(), which uses Pearson correlation
-library(corrplot)
 # isolating numbered columns from my data
 static_microglia_num_cols <- sapply(static_microglia_filtered, is.numeric)
 
@@ -395,15 +396,10 @@ ggbiplot(static_microglia_non_red_pca,
 
 # now I can also create a 3D scatterplot to look at the spread of PCs 1-3
 ## i will do this using the plotly package 
-library(plotly)
 
 # identifying the scores for the first 3 PCs, plus the grouping variable (treatment)
 scores_non_red <- as.data.frame(static_microglia_non_red_pca$x[, 1:3])
 scores_non_red$Treatment <- static_microglia_filtered$Treatment
-
-# also saving the first 3 PC scores as a separate data frame for downstream clustering and analysis
-static_microglia_pc1_4 <- as.data.frame(static_microglia_non_red_pca$x[, 1:3])
-View(static_microglia_pc1_4)
 
 # generating the variance explained, for the axis labels
 ve <- round(summary(static_microglia_non_red_pca)$importance[2, ] * 100, 1)
@@ -461,58 +457,48 @@ fviz_nbclust(static_microglia_pc1_4[static_microglia_subsample, ], kmeans,
 ## this is because the morphologies in my dataset are very continuos, rather than discrete/dinstinct groups
 ### for this reason, I will test several k-values ranging from 2-6
 
-# setting k = 3 to start 
-## running kmeans() on my entire dataset of PC1-PC3
-static_microglia_kmeans_3 <- kmeans(static_microglia_pc1_4, centers = 3, nstart = 25)
-## printing out the values obtained from this computation 
-### size = number of cells per cluster
-str(static_microglia_kmeans_3)
+# conducting k-means clustering for k = 2, 3, 4, 5, and 6: 
 
-# visualizing clusters using fviz_cluster()
-fviz_cluster(static_microglia_kmeans_3, data = static_microglia_pc1_4)
-
-# calculating the averages of each variable by cluster to try to interpret what each cluster means 
-## creating a copy of my df and adding k=3 cluster column 
-### making a copy of the df
-static_microglia_non_red_k3 <- static_microglia_non_red
-static_microglia_non_red_k3$Cluster <- factor(static_microglia_kmeans_3$cluster)
-View(static_microglia_non_red_k3) # it worked!
-
-## parsing out the numeric columns from the new df using sapply() again
-static_microglia_non_red_k3_num_cols <- static_microglia_non_red_k3[sapply(static_microglia_non_red_k3, is.numeric)]
-
-# averaging the values for each variable from each cluster (note: I am taking the means of the SCALED values)
-## this step divides each clusters and takes the mean value of each variable for that specific cluster 
-static_microglia_cluster_means <- aggregate(static_microglia_non_red_k3_num_cols,
-                           by = list(Cluster = static_microglia_non_red_k3$Cluster),
-                           FUN = mean)
-static_microglia_cluster_means[-1] <- round(static_microglia_cluster_means[-1], 2)
-# printing a table with the mean values for each variable from each cluster
-static_microglia_cluster_means
-# since the values were z-standardized, each value is in standard deviation units relative to all cells
-## if the value is positive, it is above average, negative is below average, 0 = exactly average 
-
-# visualizing this as a heatmap for convenience 
-#install.packages('pheatmap')
-library(pheatmap)
-pheatmap(t(static_microglia_cluster_means[, -1]), labels_col = static_microglia_cluster_means$Cluster,
-         cluster_cols = FALSE, scale = "none")
-
-# based on these results, each cluster represents the following morphological group: 
-## cluster 1: ameboid (highest circularity, low branch length, area, number of branches, etc.)
-## cluster 2: rod-like (low circularity, high branch length, ratio of hull axes)
-## cluster 3: ramified (high number of branches, triple points, area)
-
+# setting k = 2
+static_microglia_kmeans_2 <- kmeans(static_microglia_pc1_4, centers = 2, nstart = 25)
+fviz_cluster(static_microglia_kmeans_2, data = static_microglia_pc1_4)
+# creating new df with added cluster column 
+static_microglia_non_red_k2 <- static_microglia_non_red
+static_microglia_non_red_k2$Cluster <- factor(static_microglia_kmeans_2$cluster)
 # plotting clusters on biplot of PC1 and PC2
 ggbiplot(static_microglia_non_red_pca,
-                          groups = static_microglia_non_red_k3$Cluster,
-                          #ellipse = TRUE,
-                          var.axes = TRUE,
-                          varname.size = 2,
-                          varname.adjust = 2,
-                          alpha = 0.4,
-                          repel = TRUE, 
-                          vector.args = list(linewidth = 0.3)) +
+         groups = static_microglia_non_red_k2$Cluster,
+         #ellipse = TRUE,
+         var.axes = TRUE,
+         varname.size = 2,
+         varname.adjust = 2,
+         alpha = 0.4,
+         repel = TRUE, 
+         vector.args = list(linewidth = 0.3)) +
+  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue")) +
+  scale_fill_manual(values = c('1' = "darkorange", '2' = "cornflowerblue")) +
+  guides(shape = "none") +
+  theme_minimal() +
+  labs(title = "Biplot of PC1 and PC2",
+       color = "Cluster", fill = "Cluster") +
+  coord_fixed()
+
+# setting k = 3
+static_microglia_kmeans_3 <- kmeans(static_microglia_pc1_4, centers = 3, nstart = 25)
+fviz_cluster(static_microglia_kmeans_3, data = static_microglia_pc1_4)
+# creating new df with added cluster column 
+static_microglia_non_red_k3 <- static_microglia_non_red
+static_microglia_non_red_k3$Cluster <- factor(static_microglia_kmeans_3$cluster)
+# plotting clusters on biplot of PC1 and PC2
+ggbiplot(static_microglia_non_red_pca,
+         groups = static_microglia_non_red_k3$Cluster,
+         #ellipse = TRUE,
+         var.axes = TRUE,
+         varname.size = 2,
+         varname.adjust = 2,
+         alpha = 0.4,
+         repel = TRUE, 
+         vector.args = list(linewidth = 0.3)) +
   scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue")) +
   scale_fill_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue")) +
   guides(shape = "none") +
@@ -520,56 +506,6 @@ ggbiplot(static_microglia_non_red_pca,
   labs(title = "Biplot of PC1 and PC2",
        color = "Cluster", fill = "Cluster") +
   coord_fixed()
-
-# now I will perform statistical tests to evaluate the differences between clusters
-## I will examine how similar each cluster is based on different variables 
-### I will choose variables that have large loadings and correlate with a certain cluster 
-
-# calculating the pca loadings to have an empirical measure when choosing variables 
-pca_loadings <- static_microglia_non_red_pca$rotation %*% diag(static_microglia_non_red_pca$sdev)
-pca_loadings
-
-
-## testing variable: FOREGROUND PIXELS - large loading magnitude, aligns with cluster 1
-# I am using kruskall wallis, which is the non-parametric version of anova
-kruskal.test(Foreground.pixels ~ Cluster, data = static_microglia_non_red_k3)
-# results: chi-squared = 16811, df = 2, p-value < 2.2e-16
-# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
-# post-hoc test: wilcox/mann-whitney u-test 
-pairwise.wilcox.test(static_microglia_non_red_k3$Foreground.pixels, 
-                     static_microglia_non_red_k3$Cluster, 
-                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
-# results: p<2e-16 for each comparison of two clusters 
-# indicates that each cluster has significant differences in foreground pixels 
-
-## testing variable: MAX/MIN RATIO OF HULL AXES (measure of cell shape - circularity/length) - large loading magnitude, aligns with cluster 2
-# I am using kruskall wallis, which is the non-parametric version of anova
-kruskal.test(Max.min.hull.radius  ~ Cluster, data = static_microglia_non_red_k3)
-# results: chi-squared = 14532, df = 2, p-value < 2.2e-16
-# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
-# post-hoc test: wilcox/mann-whitney u-test 
-pairwise.wilcox.test(static_microglia_non_red_k3$Max.min.hull.radius, 
-                     static_microglia_non_red_k3$Cluster, 
-                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
-# results: p<2e-16 for each comparison of two clusters 
-# indicates that each cluster has significant differences in cell max/min hull radius (measure of cell shape - circularity/length)
-
-## testing variable: CIRCULARITY - large loading magnitude, aligns with cluster 3
-# I am using kruskall wallis, which is the non-parametric version of anova
-kruskal.test(Circularity ~ Cluster, data = static_microglia_non_red_k3)
-# results: chi-squared = 16076, df = 2, p-value < 2.2e-16
-# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
-# post-hoc test: wilcox/mann-whitney u-test 
-pairwise.wilcox.test(static_microglia_non_red_k3$Circularity, 
-                     static_microglia_non_red_k3$Cluster, 
-                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
-# results: p<2e-16 for each comparison of two clusters 
-# indicates that each cluster has significant differences in cell circularity
-
-# after running these stats, I can confirm that my data 
-
-# ------------------------------------------------------------------------------
-# CONDUCTING K-MEANS CLUSTERING (k = 4, 5, 6, and 2)
 
 # setting k = 4
 static_microglia_kmeans_4 <- kmeans(static_microglia_pc1_4, centers = 4, nstart = 25)
@@ -644,29 +580,6 @@ ggbiplot(static_microglia_non_red_pca,
        color = "Cluster", fill = "Cluster") +
   coord_fixed()
 
-# setting k = 2
-static_microglia_kmeans_2 <- kmeans(static_microglia_pc1_4, centers = 2, nstart = 25)
-fviz_cluster(static_microglia_kmeans_2, data = static_microglia_pc1_4)
-# creating new df with added cluster column 
-static_microglia_non_red_k2 <- static_microglia_non_red
-static_microglia_non_red_k2$Cluster <- factor(static_microglia_kmeans_2$cluster)
-# plotting clusters on biplot of PC1 and PC2
-ggbiplot(static_microglia_non_red_pca,
-         groups = static_microglia_non_red_k2$Cluster,
-         #ellipse = TRUE,
-         var.axes = TRUE,
-         varname.size = 2,
-         varname.adjust = 2,
-         alpha = 0.4,
-         repel = TRUE, 
-         vector.args = list(linewidth = 0.3)) +
-  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue")) +
-  scale_fill_manual(values = c('1' = "darkorange", '2' = "cornflowerblue")) +
-  guides(shape = "none") +
-  theme_minimal() +
-  labs(title = "Biplot of PC1 and PC2",
-       color = "Cluster", fill = "Cluster") +
-  coord_fixed()
 
 # ------------------------------------------------------------------------------
 # RUNNING SILHOUETTE TEST AND DUNN INDEX FOR K-MEANS CLUSTERS
@@ -742,7 +655,102 @@ km_cl_list <- lapply(all_kmeans, function(m) m$cluster)
 round(fast_dunn(static_microglia_pc1_4, km_cl_list), 4)
 # these values are VERY small, which is to because the minimum distance between clusters is very small 
 ## I can still interpret them, but the differences between should be taken with a grain of salt, since they are also very slight/small
-### the Dunn index suggests that k = 3 is optimal, followed by k = 2 
+### the Dunn index suggests that k = 4 is optimal, followed by k = 2 
+
+# these two analyses point towards either k = 2 or k = 4 as being the optimal number of clusters
+## for that reason, I am going to create heatmaps for clustering with both k-values and see which morphological features contribute to each cluster group 
+### this will allow me to determine which number of clusters is the most biologically relevant 
+
+# starting with k = 2 k-means clusters 
+## creating a new df that has the numeric columns removed 
+static_microglia_non_red_k2_num_cols <- static_microglia_non_red_k2[sapply(static_microglia_non_red_k2, is.numeric)]
+# averaging the values for each variable from each cluster (note: I am taking the means of the SCALED values)
+## this step divides each clusters and takes the mean value of each variable for that specific cluster 
+static_microglia_cluster_means2 <- aggregate(static_microglia_non_red_k2_num_cols,
+                                            by = list(Cluster = static_microglia_non_red_k2$Cluster),
+                                            FUN = mean)
+static_microglia_cluster_means2[-1] <- round(static_microglia_cluster_means2[-1], 2)
+# printing a table with the mean values for each variable from each cluster
+static_microglia_cluster_means2
+# since the values were z-standardized, each value is in standard deviation units relative to all cells
+## if the value is positive, it is above average, negative is below average, 0 = exactly average 
+# visualizing this as a heatmap for convenience 
+pheatmap(t(static_microglia_cluster_means2[, -1]), labels_col = static_microglia_cluster_means2$Cluster,
+         cluster_cols = FALSE, scale = "none")
+# using k-means clustering with k = 2, each cluster represents: 
+## cluster 1: high area and perimeter, many branches, low circularity, high max branch length -> more branched/ramified, larger cells
+## cluster 2: low area and perimeter, high circularity, high hull pixels -> ameboid cells 
+### this clustering approach is not very biologically relevant because it leaves out more rod-like (long and skinny) cells that are present in the data (we can see them in the IHC images)
+
+# moving on to k = 4 k-means clusters 
+## creating a new df that has the numeric columns removed 
+static_microglia_non_red_k4_num_cols <- static_microglia_non_red_k4[sapply(static_microglia_non_red_k4, is.numeric)]
+# averaging the values for each variable from each cluster (note: I am taking the means of the SCALED values)
+## this step divides each clusters and takes the mean value of each variable for that specific cluster 
+static_microglia_cluster_means4 <- aggregate(static_microglia_non_red_k4_num_cols,
+                                            by = list(Cluster = static_microglia_non_red_k4$Cluster),
+                                            FUN = mean)
+static_microglia_cluster_means4[-1] <- round(static_microglia_cluster_means4[-1], 2)
+# printing a table with the mean values for each variable from each cluster
+static_microglia_cluster_means4
+# since the values were z-standardized, each value is in standard deviation units relative to all cells
+## if the value is positive, it is above average, negative is below average, 0 = exactly average 
+# visualizing this as a heatmap for convenience 
+pheatmap(t(static_microglia_cluster_means4[, -1]), labels_col = static_microglia_cluster_means4$Cluster,
+         cluster_cols = FALSE, scale = "none")
+# using k-means clustering with k = 4, each cluster represents: 
+## cluster 1: highest circularity, low area and perimeter, few branches -> ameboid 
+## cluster 2: second lowest circularity, high area and perimeter, many branches, many foreground pixels -> ramified
+## cluster 3: lowest circularity, low area, average perimeter, high max and mean branch length -> rod-like 
+## cluster 4: average circularity, perimeter and area, low mean branch length, average number of branches -> somewhat ramified/transitional ramified (multiple short branches)
+### this clustering approach is much more biologically relevant as it captures known morphological states of fetal microglia
+
+# now I am going to run statistical tests on k-means clustering (k = 4) to ensure that clusters are distinct from one another 
+## I will examine how similar each cluster is based on different variables 
+### I will choose variables that have large loadings and correlate with a certain cluster 
+
+# calculating the pca loadings to have an empirical measure when choosing variables 
+pca_loadings <- static_microglia_non_red_pca$rotation %*% diag(static_microglia_non_red_pca$sdev)
+pca_loadings
+
+## testing variable: FOREGROUND PIXELS - large loading magnitude, aligns with cluster 1
+# I am using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Foreground.pixels ~ Cluster, data = static_microglia_non_red_k4)
+# results: chi-squared = 21143, df = 3, p-value < 2.2e-16
+# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
+# post-hoc test: wilcox/mann-whitney u-test 
+pairwise.wilcox.test(static_microglia_non_red_k4$Foreground.pixels, 
+                     static_microglia_non_red_k4$Cluster, 
+                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
+# results: p<2e-16 for each comparison of two clusters 
+# indicates that each cluster has significant differences in foreground pixels 
+
+## testing variable: MAX/MIN RATIO OF HULL AXES (measure of cell shape - circularity/length) - large loading magnitude, aligns with cluster 2
+# I am using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Max.min.hull.radius  ~ Cluster, data = static_microglia_non_red_k4)
+# results: chi-squared = 14137, df = 3, p-value < 2.2e-16
+# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
+# post-hoc test: wilcox/mann-whitney u-test 
+pairwise.wilcox.test(static_microglia_non_red_k4$Max.min.hull.radius, 
+                     static_microglia_non_red_k4$Cluster, 
+                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
+# results: p<2e-16 for each comparison of two clusters 
+# indicates that each cluster has significant differences in cell max/min hull radius (measure of cell shape - circularity/length)
+
+## testing variable: CIRCULARITY - large loading magnitude, aligns with cluster 3
+# I am using kruskall wallis, which is the non-parametric version of anova
+kruskal.test(Circularity ~ Cluster, data = static_microglia_non_red_k4)
+# results: chi-squared = 15824, df = 3, p-value < 2.2e-16
+# indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
+# post-hoc test: wilcox/mann-whitney u-test 
+pairwise.wilcox.test(static_microglia_non_red_k4$Circularity, 
+                     static_microglia_non_red_k4$Cluster, 
+                     p.adjust.method = "BH") # Bonferroni correction for multiple testing
+# results: p<2e-16 for each comparison of two clusters 
+# indicates that each cluster has significant differences in cell circularity
+
+# after using these statistical methods, I can be more certain that the clusters created by k-means clustering with k = 4 are separate and distinct based on certain key morphological features
+
 
 # ------------------------------------------------------------------------------
 # CONDUCTING WARDD2 CLUSTERING 
@@ -793,9 +801,9 @@ ggplot(sil_df_wardD2, aes(x = k, y = sil, group = 1)) +
 ## here I am using the function created when calculating Dunn index for K-means clustering, but subbing in the wardD2 data
 ward_dunn <- fast_dunn(static_microglia_pc1_4, ward_list)
 round(ward_dunn, 4)
-# this analysis suggests that k = 2 is the optimal number of clusters, followed by k = 3
+# this analysis suggests that k = 2, 3 and 4 are all equivalent numbers of clusters
 
-# after conducting the above analyses, I can conclude that k = 2 and k = 4 are the best k-values 
+# after conducting the above analyses, I can conclude that k = 2 and k = 4 are the best k-values (because they are both highlighted in the silhouette and Dunn index calculation)
 ## k = 2 is optimal, however, it likely has less biological relevance than k = 4 
 ### to determine which is more relevant in terms of morphological features from my dataset, I am going to create heatmaps for clustering with both k-values and see which features contribute to them
 
@@ -810,14 +818,13 @@ static_microglia_ward_cluster_means_k2 <- aggregate(static_microglia_non_red_war
                                                  FUN = mean)
 static_microglia_ward_cluster_means_k2[-1] <- round(static_microglia_ward_cluster_means_k2[-1], 2)
 static_microglia_ward_cluster_means_k2
-# creating my heatmap
-library(pheatmap)
+# creating my heatmap (function from pheatmap package)
 pheatmap(t(static_microglia_ward_cluster_means_k2[, -1]),
          labels_col = static_microglia_ward_cluster_means_k2$Cluster,
          cluster_cols = FALSE, scale = "none")
-# for k = 2: 
-## cluster 1 cells have a smaller area and perimeter, fewer branches, a smaller radius, low circularity, low max branch length
-## cluster 2 cells have a larger area and perimeter, more branches, a larger radius, low circularity, relatively low max branch length
+# for k = 2 wardD2 clustering: 
+## cluster 1 cells have a larger area and perimeter, more branches, low circularity, and relatively low max branch length
+## cluster 2 cells have a smaller area and perimeter, fewer branches, a smaller radius, low circularity, low max branch length
 ### even though this k = 2 is the better cluster number via empirical methods, it makes less sense when looking at the implicated features 
 #### cluster 1 cells have low area and less branches that cluster 2, this likely puts cells that are more ameboid and rod-like in the same cluster (1)
 
@@ -834,19 +841,34 @@ static_microglia_ward_cluster_means_k4 <- aggregate(static_microglia_non_red_war
 static_microglia_ward_cluster_means_k4[-1] <- round(static_microglia_ward_cluster_means_k4[-1], 2)
 static_microglia_ward_cluster_means_k4
 # creating the heatmap
-library(pheatmap)
 pheatmap(t(static_microglia_ward_cluster_means_k4[, -1]),
          labels_col = static_microglia_ward_cluster_means_k4$Cluster,
          cluster_cols = FALSE, scale = "none")
 # based on the results of wardD2 clustering with k = 4, the following morphological groups emerge: 
-## cluster 1: average area, perimeter, number of branches, and circularity, low hull radius -> ameboid with branches/intermediate morphology
+## cluster 1: average area, perimeter, number of branches, and circularity, low hull radius -> intermediate, somewhat ramified
 ## cluster 2: small area, perimeter, few branches, highest circularity (of the 4), many hull pixels, low max branch length -> ameboid cells
 ## cluster 3: high ratio of hull axes and hull radius, low circularity and hull pixels -> rod-like cells
 ## cluster 4: large area, perimeter, many branches, low circularity, low mean branch length -> ramified cells 
 
+# k = 4 for wardD2 clustering makes much more sense (biologically) than k = 2, as it fully encompasses the known morphological subgroups of fetal microglia 
+
+# since the ordering for my k-means and wardD2 clustering differs slightly, I am going to re-order the wardD2 clusters to (roughly) match the k-means clusters 
+## old wardD2 number -> new number (matching the K-means numbering)
+ward_to_km <- c("1" = 4, "2" = 1, "3" = 3, "4" = 2)
+# making a copy of my df so the original labels stay untouched
+static_microglia_non_red_ward_k4_matched <- static_microglia_non_red_ward_k4
+static_microglia_non_red_ward_k4_matched$Cluster <- factor(
+  unname(ward_to_km[as.character(static_microglia_non_red_ward_k4$Cluster)]),
+  levels = 1:4)
+# check: each old cluster should map to exactly one new cluster
+table(Old = static_microglia_non_red_ward_k4$Cluster,
+      New = static_microglia_non_red_ward_k4_matched$Cluster)
+# it worked!
+
+
 # plotting wardD2 clusters (k = 4) on biplot of PC1 and PC2
 ggbiplot(static_microglia_non_red_pca,
-         groups = static_microglia_non_red_ward_k4$Cluster,
+         groups = static_microglia_non_red_ward_k4_matched$Cluster,
          #ellipse = TRUE,
          var.axes = TRUE,
          varname.size = 2,
@@ -871,36 +893,36 @@ pca_loadings
 
 ## testing variable: HULL PIXELS - large loading magnitude, aligns with cluster 2
 # I am using kruskall wallis, which is the non-parametric version of anova
-kruskal.test(Hull.pixels ~ Cluster, data = static_microglia_non_red_ward_k4)
-# results: chi-squared = 18132, df = 3, p-value < 2.2e-16
+kruskal.test(Hull.pixels ~ Cluster, data = static_microglia_non_red_ward_k4_matched)
+# results: chi-squared = 15099, df = 3, p-value < 2.2e-16
 # indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
 # post-hoc test: wilcox/mann-whitney u-test 
-pairwise.wilcox.test(static_microglia_non_red_ward_k4$Hull.pixels, 
-                     static_microglia_non_red_ward_k4$Cluster, 
+pairwise.wilcox.test(static_microglia_non_red_ward_k4_matched$Hull.pixels, 
+                     static_microglia_non_red_ward_k4_matched$Cluster, 
                      p.adjust.method = "BH") # Bonferroni correction for multiple testing
 # results: p<2e-16 for each comparison of two clusters 
 # indicates that each cluster has significant differences in hull pixels
 
 ## testing variable: MAX/MIN RATIO OF HULL AXES (measure of cell shape - circularity/length) - large loading magnitude, aligns with cluster 3
 # I am using kruskall wallis, which is the non-parametric version of anova
-kruskal.test(Max.min.hull.radius  ~ Cluster, data = static_microglia_non_red_ward_k4)
-# results: chi-squared = 10127, df = 3, p-value < 2.2e-16
+kruskal.test(Max.min.hull.radius  ~ Cluster, data = static_microglia_non_red_ward_k4_matched)
+# results: chi-squared = 7866.3, df = 3, p-value < 2.2e-16
 # indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
 # post-hoc test: wilcox/mann-whitney u-test 
-pairwise.wilcox.test(static_microglia_non_red_ward_k4$Max.min.hull.radius, 
-                     static_microglia_non_red_ward_k4$Cluster, 
+pairwise.wilcox.test(static_microglia_non_red_ward_k4_matched$Max.min.hull.radius, 
+                     static_microglia_non_red_ward_k4_matched$Cluster, 
                      p.adjust.method = "BH") # Bonferroni correction for multiple testing
 # results: p<2e-16 for each comparison of two clusters 
 # indicates that each cluster has significant differences in cell max/min hull radius (measure of cell shape - circularity/length)
 
 ## testing variable: FOREGROUND PIXELS - large loading magnitude, aligns with cluster 4
 # I am using kruskall wallis, which is the non-parametric version of anova
-kruskal.test(Foreground.pixels ~ Cluster, data = static_microglia_non_red_ward_k4)
-# results: chi-squared = 20892, df = 3, p-value < 2.2e-16
+kruskal.test(Foreground.pixels ~ Cluster, data = static_microglia_non_red_ward_k4_matched)
+# results: chi-squared = 18694, df = 3, p-value < 2.2e-16
 # indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
 # post-hoc test: wilcox/mann-whitney u-test 
-pairwise.wilcox.test(static_microglia_non_red_ward_k4$Foreground.pixels, 
-                     static_microglia_non_red_ward_k4$Cluster, 
+pairwise.wilcox.test(static_microglia_non_red_ward_k4_matched$Foreground.pixels, 
+                     static_microglia_non_red_ward_k4_matched$Cluster, 
                      p.adjust.method = "BH") # Bonferroni correction for multiple testing
 # results: p<2e-16 for each comparison of two clusters 
 # indicates that each cluster has significant differences in foreground pixels
@@ -908,12 +930,12 @@ pairwise.wilcox.test(static_microglia_non_red_ward_k4$Foreground.pixels,
 ## testing variable: CIRCULARITY - large loading magnitude, aligns with cluster 1 AND 2 (on the border of the two clusters)
 ### I had to use this loading for comparison because there is no loading that directly aligns with cluster 1 and this one is the best option
 # I am using kruskall wallis, which is the non-parametric version of anova
-kruskal.test(Circularity ~ Cluster, data = static_microglia_non_red_ward_k4)
-# results: chi-squared = 11905, df = 3, p-value < 2.2e-16
+kruskal.test(Circularity ~ Cluster, data = static_microglia_non_red_ward_k4_matched)
+# results: chi-squared = 9650.4, df = 3, p-value < 2.2e-16
 # indicates that there is a significant difference between clusters, so I will follow up with a post-hoc test 
 # post-hoc test: wilcox/mann-whitney u-test 
-pairwise.wilcox.test(static_microglia_non_red_ward_k4$Circularity, 
-                     static_microglia_non_red_ward_k4$Cluster, 
+pairwise.wilcox.test(static_microglia_non_red_ward_k4_matched$Circularity, 
+                     static_microglia_non_red_ward_k4_matched$Cluster, 
                      p.adjust.method = "BH") # Bonferroni correction for multiple testing
 # results: p<2e-16 for each comparison of two clusters 
 # indicates that each cluster has significant differences in hull pixels
@@ -927,7 +949,6 @@ pairwise.wilcox.test(static_microglia_non_red_ward_k4$Circularity,
 # UMAP (uniform manifold approximation and projection) is another method of dimensionality reduction that I will use to visualize and interpret my data
 ## to familiarize myself with umap functions in R, I referenced this helpful website: https://www.datanovia.com/learn/machine-learning/dimension-reduction/umap
 
-set.seed(456)
 # I will be using the umap function from the uwot package 
 umap_embedding <- umap(static_microglia_pc1_4, n_neighbors = 30, min_dist = 0.1, n_components = 2)
 View(umap_embedding)
@@ -937,8 +958,8 @@ View(umap_embedding)
 umap_df <- data.frame(
   UMAP1   = umap_embedding[, 1],
   UMAP2   = umap_embedding[, 2],
-  Sex = static_microglia_non_red$Sex, 
-  Treatment = static_microglia_non_red$Treatment)
+  Sex = static_microglia_non_red$Sex, # adding Sex from original dataset
+  Treatment = static_microglia_non_red$Treatment) # adding Treatment from original dataset
 head(umap_df)
 
 
@@ -958,20 +979,21 @@ ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = Sex)) +
 # UMAP dimensionality reduction produces a much different spread of my data than PCA did (discrete clusters of points)
 ## however, no obvious patterns/cluster differences emerge when overlaying plots with treatment or sex variables
 
-# plotting with cluster overlay from wardD2 k = 4 
-## creating new df with cluster column 
-umap_df_wardD2_k4 <- data.frame(
-  UMAP1   = umap_embedding[, 1],
-  UMAP2   = umap_embedding[, 2],
-  Sex = static_microglia_non_red$Sex, 
-  Treatment = static_microglia_non_red$Treatment,
-  Cluster = static_microglia_non_red_ward_k4$Cluster)
-## plotting UMAP with clusters overlaid
-ggplot(umap_df_wardD2_k4, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
-  geom_point(alpha = 1, size = 1) +
-  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen")) +
-  theme_minimal() +
-  labs(title = "UMAP Projectionx")
+# now I am going to overlay the k-means and wardD2 clusters on the UMAP plot 
+## before doing that, I am going to re-work the datasets to replace the cluster numbers with their corresponding categorical names
+cluster_names <- c("ameboid", "ramified", "rod-like", "intermediate")   # order = clusters 1, 2, 3, 4
+# K-means
+static_microglia_non_red_k4_names <- static_microglia_non_red_k4
+static_microglia_non_red_k4_names$Morphology <- factor(
+  static_microglia_non_red_k4_names$Cluster,
+  levels = 1:4, labels = cluster_names)
+View(static_microglia_non_red_k4_names)
+# wardD2 
+static_microglia_non_red_ward_k4_matched_names <- static_microglia_non_red_ward_k4_matched
+static_microglia_non_red_ward_k4_matched_names$Morphology <- factor(
+  static_microglia_non_red_ward_k4_matched_names$Cluster,
+  levels = 1:4, labels = cluster_names)
+View(static_microglia_non_red_ward_k4_matched_names)
 
 # plotting with cluster overlay from k-means k = 4
 ## creating new df with cluster column 
@@ -980,18 +1002,30 @@ umap_df_kmeans_k4 <- data.frame(
   UMAP2   = umap_embedding[, 2],
   Sex = static_microglia_non_red$Sex, 
   Treatment = static_microglia_non_red$Treatment,
-  Cluster = static_microglia_non_red_k4$Cluster)
+  Morphology = static_microglia_non_red_k4_names$Morphology)
 ## plotting UMAP with clusters overlaid
-ggplot(umap_df_kmeans_k4, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
+ggplot(umap_df_kmeans_k4, aes(x = UMAP1, y = UMAP2, color = Morphology)) +
   geom_point(alpha = 1, size = 1) +
-  scale_color_manual(values = c('1' = "darkorange", '2' = "cornflowerblue", '3' = "mediumslateblue", '4' = "darkgreen")) +
+  scale_color_manual(values = c('ameboid' = "darkorange", 'ramified' = "cornflowerblue", 'rod-like' = "mediumslateblue", 'intermediate' = "darkgreen")) +
   theme_minimal() +
   labs(title = "UMAP Projection")
 
-# after doing all this, my UMAP plots with ward and k-means clustering look odd: the clusters are 'chopped up' through the umap distribution
-## I am going to investigate why this might be happening:
+# plotting with cluster overlay from wardD2 k = 4 
+## creating new df with cluster column 
+umap_df_wardD2_k4 <- data.frame(
+  UMAP1   = umap_embedding[, 1],
+  UMAP2   = umap_embedding[, 2],
+  Sex = static_microglia_non_red$Sex, 
+  Treatment = static_microglia_non_red$Treatment,
+  Morphology = static_microglia_non_red_ward_k4_matched_names$Morphology)
+## plotting UMAP with clusters overlaid
+ggplot(umap_df_wardD2_k4, aes(x = UMAP1, y = UMAP2, color = Morphology)) +
+  geom_point(alpha = 1, size = 1) +
+  scale_color_manual(values = c('ameboid' = "darkorange", 'ramified' = "cornflowerblue", 'rod-like' = "mediumslateblue", 'intermediate' = "darkgreen")) +
+  theme_minimal() +
+  labs(title = "UMAP Projectionx")
 
-# checking how each variable correlates to various areas of the UMAP plot
+# looking to see what variables are representing more highly on different regions of the UMAP plot
 morph_data <- static_microglia_non_red[, -c(1:7)]  # numeric variables only 
 s <- sample(nrow(morph_data), 10000)   # doing a subsample because it keeps the plotting fast
 # I am going to create plots of each variable overlaid on a separate UMAP plot 
@@ -1006,30 +1040,10 @@ ggplot(plot_long, aes(UMAP1, UMAP2, color = Value)) +
   scale_color_viridis_c(limits = c(-2, 2), oob = scales::squish) +
   facet_wrap(~Variable) +
   theme_minimal()
+# in summary: 
+## variables including area, perimeter and branches are high on the right side of the plot 
+## circularity is high on the lower left side 
+## max and mean branch length are high on the top left 'tail'
 
-# all of the variables look normal EXCEPT quadruple points (Quad.pts), which is mostly binary in colour and lays on the 'tail towards the left of the plot'
-## this is a very rare count (few cells have points with 4+ junctions), so most of the cells sit at 0 and some have 1+ quad points 
-### I wonder if this variable might be responsible (or at least partially responsible) for skewing my data 
-
-# more investigation:
-## I am quickly going to re-run pca (just a fast test) to see if that changes the layout in UMAP
-vars <- static_microglia_non_red[, -c(1:7)]
-vars_noquad <- vars[, names(vars) != "Quad.pts"]
-# re-doing PCA 
-pca_noquad <- prcomp(vars_noquad)   # used the same prcomp arguments as my original PCA
-# re-doing UMAP
-umap_noquad <- umap(pca_noquad$x[, 1:4], n_neighbors = 10, min_dist = 0.1, n_components = 2)
-df_noquad <- data.frame(UMAP1 = umap_noquad[, 1], UMAP2 = umap_noquad[, 2],
-                        Cluster = static_microglia_non_red_ward_k4$Cluster)
-df_noquad <- df_noquad[sample(nrow(df_noquad)), ]
-# plotting quickly 
-ggplot(df_noquad, aes(UMAP1, UMAP2, color = Cluster)) +
-  geom_point(size = 0.4, alpha = 0.5) +
-  theme_minimal()
-
-# this UMAP looks much better! 
-## I hypothesize that Quad.pts was skewing my data 
-### because of this, I am going to rerun this entire pipeline (start to finish -> PCA, clustering and UMAP) and see how that changes the distribution, visualization and clustering
-#### I will do this in a duplicated script (available on GitHub)
 
 # ------------------------------------------------------------------------------
