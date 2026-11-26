@@ -12,6 +12,7 @@
 #install.packages("clValid") # for calculating the Dunn's index
 #install.packages("fastcluster") # for faster heirarchical clustering
 #install.packages("uwot") # for umap 
+install.packages('tidyverse')
 
 
 # loading packages that I will use for this project
@@ -28,6 +29,7 @@ library(cluster)
 library(fastcluster)
 library(pheatmap)
 library(uwot)
+library(tidyverse)
 
 # to set memory limit required for this script file to run, paste this into console:
 ## mem.maxVSize(25000) 
@@ -436,6 +438,8 @@ set.seed(123) # I need to do this because I will be taking random subsamples
 # creating a df of the first 4 PC scores
 static_microglia_pc1_4 <- as.data.frame(static_microglia_non_red_pca$x[, 1:4])
 View(static_microglia_pc1_4)
+# saving this dataframe as a csv file in my working directory so that I can have access to it and can upload it to GitHub
+write_csv(static_microglia_pc1_4, "static_microglia_pc1_4.csv")
 
 # first I am going to use the elbow method  
 ### here I am taking a random subsample of 10k cells from my dataset to run this on because my computer does not have enough memory to run on the whole dataset
@@ -1008,7 +1012,8 @@ ggplot(umap_df_kmeans_k4, aes(x = UMAP1, y = UMAP2, color = Morphology)) +
   geom_point(alpha = 1, size = 1) +
   scale_color_manual(values = c('ameboid' = "darkorange", 'ramified' = "cornflowerblue", 'rod-like' = "mediumslateblue", 'intermediate' = "darkgreen")) +
   theme_minimal() +
-  labs(title = "UMAP Projection")
+  labs(title = "UMAP Projection")+
+  coord_fixed()
 
 # plotting with cluster overlay from wardD2 k = 4 
 ## creating new df with cluster column 
@@ -1023,7 +1028,7 @@ ggplot(umap_df_wardD2_k4, aes(x = UMAP1, y = UMAP2, color = Morphology)) +
   geom_point(alpha = 1, size = 1) +
   scale_color_manual(values = c('ameboid' = "darkorange", 'ramified' = "cornflowerblue", 'rod-like' = "mediumslateblue", 'intermediate' = "darkgreen")) +
   theme_minimal() +
-  labs(title = "UMAP Projectionx")
+  labs(title = "UMAP Projection")
 
 # looking to see what variables are representing more highly on different regions of the UMAP plot
 morph_data <- static_microglia_non_red[, -c(1:7)]  # numeric variables only 
@@ -1047,3 +1052,28 @@ ggplot(plot_long, aes(UMAP1, UMAP2, color = Value)) +
 
 
 # ------------------------------------------------------------------------------
+
+umap_embedding_3D <- umap(static_microglia_pc1_4, n_neighbors = 30, min_dist = 0.1, n_components = 3)
+
+umap_df_kmeans_k4_3D <- data.frame(UMAP1   = umap_embedding_3D[, 1],
+                                   UMAP2   = umap_embedding_3D[, 2],
+                                   UMAP3   = umap_embedding_3D[, 3],
+                                   Sex = static_microglia_non_red$Sex, 
+                                   Treatment = static_microglia_non_red$Treatment,
+                                   Morphology = static_microglia_non_red_k4_names$Morphology)
+
+# creating the 3D scatter plot 
+umap_3D_kmeans <- plot_ly(umap_df_kmeans_k4_3D,
+               x = ~UMAP1, y = ~UMAP2, z = ~UMAP3,
+               color = ~Morphology,
+               colors =(values = c('ameboid' = "darkorange", 'ramified' = "cornflowerblue", 'rod-like' = "mediumslateblue", 'intermediate' = "darkgreen")),
+               type = "scatter3d",
+               mode = "markers",
+               marker = list(size = 1, opacity = 0.8))
+
+umap_3D_kmeans
+
+
+
+
+
