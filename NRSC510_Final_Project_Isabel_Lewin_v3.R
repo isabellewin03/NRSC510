@@ -1,8 +1,7 @@
 # NRSC510 final project in R 
 ## file version 3
 
-# NRSC510 class project 
-## Isabel Lewin 
+## Created by Isabel Lewin 
 
 # installing new packages that I will need for PCA + data visualization
 #install.packages("factoextra") # for some PCA visualizations
@@ -12,7 +11,7 @@
 #install.packages("clValid") # for calculating the Dunn's index
 #install.packages("fastcluster") # for faster heirarchical clustering
 #install.packages("uwot") # for umap 
-install.packages('tidyverse')
+#install.packages('tidyverse')
 
 
 # loading packages that I will use for this project
@@ -91,163 +90,19 @@ glimpse(static_microglia_filtered)
 View(static_microglia_filtered)
 # these steps worked! number of columns reduced by 1, rows reduced by ~2000
 
-# ------------------------------------------------------------------------------
-# INITIAL PCA STEP
-
 # i am going to use PCA for the first part of my analysis for this dataset, and before i do that, i need to standardize my data
 ## this will prevent any variables with large values from skewing the PCA results
 
 # my first step is to prevent the categorical variables from being standardized: 
 ## to do this i am using the sapply() function to isolate the numeric columns and make them into a vector
 static_microglia_num_cols <- sapply(static_microglia_filtered, is.numeric)
-
 # now I will use the lapply() function to standardize the numeric columns in my dataset 
 ## i will perform z-standardization, using the following operation: z = (value - mean)/standard deviation, where z is the new, standardized value 
 ### the scale() function automatically performs z-scoring so I will use it for this case
 static_microglia_filtered[static_microglia_num_cols] <- lapply(static_microglia_filtered[static_microglia_num_cols], 
                                                                function(x) as.numeric(scale(x)))
 
-# checking to make sure my standardized dataset looks correct
-View(static_microglia_filtered)
-# looks good! all numeric variables have been standardized by z-scoring
-
-# now I will run a PCA using the function prcomp()
-## here, I excluded columns 1-7 from analysis because they are categorical variables and I don't want them in my analysis
-static_microglia_pca <- prcomp(static_microglia_filtered[,-c(1:7)], 
-                               scale = FALSE)
-
-# checking out my data to make sure it looks right after doing PCA 
-summary(static_microglia_pca)
-# looks good!
-
-# this is going to print out the names of more data saved in static_microglia_pca
-names(static_microglia_pca)
-# looking at each one individually: 
-static_microglia_pca$sdev # this is the standard deviation of the components 
-static_microglia_pca$rotation # these are the eigenvectors 
-static_microglia_pca$center # this is the standard deviation of the variables 
-static_microglia_pca$scale # this is the mean of the variables 
-static_microglia_pca$x # these are the PCA scores for all of the components 
-
-# generating a scree plot of to display the Eigenvalues for each principal component in my PCA 
-## this will help me decide how many components to retain in my analysis 
-### the function fviz_eig() is a part of the factoextra package 
-fviz_eig(static_microglia_pca, 
-         addlabels = TRUE, 
-         ylim = c(0, 60),
-         barfill = 'skyblue',
-         barcolor = 'black',
-         main = "Microglia Morphology PCA Scree Plot", 
-         ggtheme = theme_classic())
-# from this plot, it seems as though PCs 1-3 explain most of the variance (~82%)
-## PC1 and PC2 alone explain 75.3% 
-
-# i am also going to make an elbow plot with the Kaiser criterion cutoff (red line)
-## this cutoff states that you should only retain PCs with a variance percentage (Eigenvalue) > 1
-pca_scree <- data.frame(
-  PC = 1:length(static_microglia_pca$sdev),
-  Eigenvalue = static_microglia_pca$sdev^2)
-
-ggplot(pca_scree, aes(x = PC, y = Eigenvalue)) +
-  geom_line(color = "blue", linewidth = 1) +
-  geom_point(color = "blue", size = 3) +
-  # Add Kaiser Criterion line at y = 1
-  geom_hline(yintercept = 1, linterp = "dashed", color = "red", linewidth = 1) +
-  labs(title = "Scree Plot", x = "Principal Component", y = "Eigenvalue") +
-  theme_minimal()
-# this shows me that I need to retain PCs 1-3 
-
-# since these are the PCs I'm mainly interested in, I can make a component matrix table with them alone for easier viewing
-## component matrix for PCs 1-3
-component_matrix_PC123 <- static_microglia_pca$rotation[,-c(4:27)] # these are the eigenvectors
-View(component_matrix_PC123)
-
-# now I am going to make biplots to visualize the spread of my data with PCA
-# creating a biplot that overlays PC1 and PC2 
-ggbiplot(static_microglia_pca,
-         groups = static_microglia_filtered$Treatment,
-         ellipse = TRUE,
-         var.axes = TRUE,
-         varname.size = 2,
-         varname.adjust = 2,
-         alpha = 0.4,
-         repel = TRUE, 
-         vector.args = list(linewidth = 0.3)) +
-  scale_color_manual(values = c(CON = "darkorange", COLD = "cornflowerblue")) +
-  scale_fill_manual(values = c(CON = "darkorange", COLD = "cornflowerblue")) +
-  guides(shape = "none") +
-  theme_minimal() +
-  labs(title = "Biplot of PC1 and PC2",
-       color = "Treatment", fill = "Treatment") +
-  coord_fixed()
-# I can't get the labels not to overlap, so I will have to save the plot as an EPS file and edit the locations of the labels
-
-# # creating a biplot that overlays PC2 and PC3, again visualizing only the top 8 contributing variables 
-ggbiplot(static_microglia_pca,
-         choices = c(2, 3), # specifying PCs 2 and 3
-         groups = static_microglia_filtered$Treatment,
-         ellipse = TRUE,
-         var.axes = TRUE,
-         varname.size = 2,
-         varname.adjust = 2,
-         alpha = 0.4,
-         repel = TRUE, 
-         vector.args = list(linewidth = 0.3)) +
-  scale_color_manual(values = c(CON = "darkorange", COLD = "cornflowerblue")) +
-  scale_fill_manual(values = c(CON = "darkorange", COLD = "cornflowerblue")) +
-  guides(shape = "none") +
-  theme_minimal() +
-  labs(title = "Biplot of PC1 and PC2",
-       color = "Treatment", fill = "Treatment") +
-  coord_fixed()
-
-# i can use these plots (which both use functions in the same family as above) to visualize the data points and variables separately
-## data points
-fviz_pca_ind(static_microglia_pca, geom = "point",
-             habillage = static_microglia_filtered$Sex, addEllipses = TRUE)
-## variables 
-fviz_pca_var(static_microglia_pca, col.var = "contrib",
-             select.var = list(contrib = 8), 
-             gradient.cols = c("blue", "orange", "red"), repel = TRUE)
-
-
-# now I can also create a 3D scatterplot to look at the spread of PCs 1-3
-## i will do this using the plotly package 
-
-# identifying the scores for the first 3 PCs, plus the grouping variable (treatment)
-scores <- as.data.frame(static_microglia_pca$x[, 1:3])
-scores$Treatment <- static_microglia_filtered$Treatment
-
-# generating the variance explained, for the axis labels
-ve <- round(summary(static_microglia_pca)$importance[2, ] * 100, 1)
-
-# creating the 3D scatter plot 
-fig <- plot_ly(scores,
-               x = ~PC1, y = ~PC2, z = ~PC3,
-               color = ~Treatment,
-               colors = c(CON = "#E69F00", COLD = "#0072B2"),
-               type = "scatter3d",
-               mode = "markers",
-               marker = list(size = 1, opacity = 0.8))
-
-fig <- fig %>% layout(
-  title = "Microglia Morphology PCA (PC1-PC3)",
-  scene = list(
-    xaxis = list(title = paste0("PC1 (", ve[1], "%)")),
-    yaxis = list(title = paste0("PC2 (", ve[2], "%)")),
-    zaxis = list(title = paste0("PC3 (", ve[3], "%)"))
-  )
-)
-
-fig
-
-
-# ------------------------------------------------------------------------------
-# PROCESSING MY DATA MORE TO REMOVE REDUNDANT VARIABLES 
-
-# after completing PCA on my data, it is clear that there are several redundant/correlating variables within my dataset
-# now I am going to remove any redundant variables and examine the resulting PCA to see if this can help clarify the analysis
-
+# now I am going to process my data to remove any redundant variables 
 ## first, I am going to check variable correlation empirically using cor(), which uses Pearson correlation
 # isolating numbered columns from my data
 static_microglia_num_cols <- sapply(static_microglia_filtered, is.numeric)
@@ -306,6 +161,10 @@ static_microglia_non_red  <- static_microglia_filtered[keep]
 View(static_microglia_non_red)
 glimpse(static_microglia_non_red)
 # looks good!
+
+
+# ------------------------------------------------------------------------------
+# RUNNING PRINCIPAL COMPONENT ANALYSIS (PCA)
 
 # now that I have removed these highly correlated variables from my dataset, I am going to perform PCA again using the steps from above 
 static_microglia_non_red_pca <- prcomp(static_microglia_non_red[,-c(1:7)], 
@@ -1050,9 +909,7 @@ ggplot(plot_long, aes(UMAP1, UMAP2, color = Value)) +
 ## circularity is high on the lower left side 
 ## max and mean branch length are high on the top left 'tail'
 
-
-# ------------------------------------------------------------------------------
-
+# creating a 3D umap to visualize my data in 3 dimensions
 umap_embedding_3D <- umap(static_microglia_pc1_4, n_neighbors = 30, min_dist = 0.1, n_components = 3)
 
 umap_df_kmeans_k4_3D <- data.frame(UMAP1   = umap_embedding_3D[, 1],
@@ -1072,6 +929,12 @@ umap_3D_kmeans <- plot_ly(umap_df_kmeans_k4_3D,
                marker = list(size = 1, opacity = 0.8))
 
 umap_3D_kmeans
+
+
+# ------------------------------------------------------------------------------
+
+
+
 
 
 
